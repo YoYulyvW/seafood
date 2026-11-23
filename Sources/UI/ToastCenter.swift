@@ -62,7 +62,8 @@ final class ToastCenter {
     }
 
     private func dismiss() {
-        guard let win = window, let host = win.rootViewController else { return }
+        guard let win = window,
+              let host = win.rootViewController as? UIHostingController<ToastBar> else { return }
         UIView.animate(withDuration: 0.2, animations: {
             host.view.alpha = 0
             host.view.transform = CGAffineTransform(translationX: 0, y: 8)
