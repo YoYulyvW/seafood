@@ -555,12 +555,13 @@ final class MySQLClient {
         for useTLS in order {
             do {
                 try establish(useTLS: useTLS, useDatabase: false)
+                // execute() 依赖 isOpen，建库语句必须先解除这个闸门
+                isOpen = true
                 _ = try execute(createSQL)
                 _ = try execute(useSQL)
                 if config.normalizedTLS != "required" {
                     tlsWarning = useTLS ? nil : MySQLClient.plaintextDowngradeWarning
                 }
-                isOpen = true
                 return
             } catch {
                 lastError = error
