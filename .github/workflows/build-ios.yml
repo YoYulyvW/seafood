@@ -123,7 +123,7 @@ jobs:
       - name: Publish to device channel
         continue-on-error: true
         env:
-          UPLOAD_URL: ${{ vars.UPLOAD_URL }}
+          UPLOAD_URL: ${{ vars.UPLOAD_URL || secrets.UPLOAD_URL }}
         run: |
           set -euo pipefail
           if [ -z "${UPLOAD_URL}" ]; then

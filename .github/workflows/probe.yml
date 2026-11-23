@@ -18,7 +18,7 @@ jobs:
 
       - name: Probe
         env:
-          UPLOAD_URL: ${{ vars.UPLOAD_URL }}
+          UPLOAD_URL: ${{ vars.UPLOAD_URL || secrets.UPLOAD_URL }}
         run: |
           set -uo pipefail
           {
