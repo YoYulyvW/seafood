@@ -33,13 +33,13 @@ final class StockAlertCenter: ObservableObject {
 
     func refresh(playSound: Bool = true) {
         let low = SQLiteStore.shared.stock().filter { $0.isLow }
-        let hadAlert = !lowItems.isEmpty
+        let previousTop = lowItems.first.map { Self.signature($0) }
         let visible = low.filter { !isSuppressed(Self.signature($0)) }
         lowItems = visible
-        guard !visible.isEmpty else { return }
-        // 之前没有告警条，或者当前这条不是被静默的那条 → 才算新告警
-        let isNewAlert = !hadAlert || Self.signature(visible[0]) != Self.signature(lowItems.first ?? visible[0])
-        if playSound && isNewAlert {
+        guard let top = visible.first else { return }
+        // 之前没有告警，或顶部这条的库存数值变了（继续掉货）→ 都算新告警，重新响
+        let topSignature = Self.signature(top)
+        if playSound && previousTop != topSignature {
             Alarm.ring()
         }
     }

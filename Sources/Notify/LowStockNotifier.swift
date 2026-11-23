@@ -26,7 +26,7 @@ final class LowStockNotifier {
         let low = (rows ?? SQLiteStore.shared.stock()).filter { $0.isLow }
         guard !low.isEmpty else { return }
         // 静默只针对“被关掉的那一条”；库存再往下掉就是新告警，照常提醒
-        if await StockAlertCenter.shared.isSuppressed(StockAlertCenter.signature(low[0])) { return }
+        if StockAlertCenter.shared.isSuppressed(StockAlertCenter.signature(low[0])) { return }
         let status = await authorizationStatus()
         guard status == .authorized || status == .provisional else { return }
 
