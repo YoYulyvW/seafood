@@ -1214,6 +1214,7 @@ final class MySQLClient {
     /// 执行 SQL，返回 affectedRows。若语句返回结果集，则把结果集读完并返回 0。
     func execute(_ sql: String) throws -> Int {
         guard isOpen else { throw MySQLClientError.notConnected }
+        sequence = 0                                    // 每条新命令包序号必须从 0 开始，否则服务端报 1156
         try writePacket(comQuery(sql))
         let packet = try readPacket()
         guard let status = packet.first else {
@@ -1250,6 +1251,7 @@ final class MySQLClient {
     /// 执行查询，返回结果集。所有值按字符串返回，NULL 为 nil。
     func query(_ sql: String) throws -> [[String: String?]] {
         guard isOpen else { throw MySQLClientError.notConnected }
+        sequence = 0                                    // 同上：命令边界重置序号
         try writePacket(comQuery(sql))
         let first = try readPacket()
         guard let status = first.first else {
