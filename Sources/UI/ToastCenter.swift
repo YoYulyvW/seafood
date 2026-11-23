@@ -14,7 +14,7 @@ struct ToastMessage: Identifiable, Equatable {
 final class ToastCenter: ObservableObject {
     static let shared = ToastCenter()
 
-    @Published private(set) var current: ToastMessage?
+    @Published fileprivate(set) var current: ToastMessage?
     private var dismissTask: Task<Void, Never>?
 
     func show(_ text: String, kind: ToastMessage.Kind = .info) {
@@ -25,44 +25,51 @@ final class ToastCenter: ObservableObject {
         dismissTask = Task { @MainActor in
             try? await Task.sleep(nanoseconds: 2_000_000_000)
             guard !Task.isCancelled else { return }
-            withAnimation(.easeOut(duration: 0.2)) {
+            withAnimation(.easeOut(duration: 0.22)) {
                 current = nil
             }
         }
     }
 }
 
-private struct ToastOverlay: ViewModifier {
-    @ObservedObject private var center = ToastCenter.shared
+/// 真正订阅 ToastCenter 的宿主视图。
+/// 注意：不能把 @ObservedObject 直接写在 ViewModifier 上——它不是 View，
+/// 不会进入视图图里，@Published 变化收不到，这就是之前 toast 一直不出现的原因。
+private struct ToastHost: View {
+    @StateObject private var center = ToastCenter.shared
 
-    func body(content: Content) -> some View {
-        content
-            .overlay(alignment: .bottom) {
-                if let toast = center.current {
-                    HStack(spacing: Theme.s2) {
-                        Image(systemName: symbol(for: toast.kind))
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(accent(for: toast.kind))
-                        Text(toast.text)
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(Theme.surface)
-                            .lineLimit(2)
-                    }
-                    .padding(.horizontal, Theme.s4)
-                    .padding(.vertical, Theme.s3)
-                    .background(Theme.ink.opacity(0.95))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .stroke(accent(for: toast.kind).opacity(0.7), lineWidth: 1)
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .padding(.horizontal, Theme.s5)
-                    .padding(.bottom, 92)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                    .id(toast.id)
+    var body: some View {
+        VStack {
+            Spacer(minLength: 0)
+            if let toast = center.current {
+                HStack(spacing: Theme.s2) {
+                    Image(systemName: symbol(for: toast.kind))
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(accent(for: toast.kind))
+                    Text(toast.text)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(Theme.surface)
+                        .lineLimit(3)
+                        .multilineTextAlignment(.leading)
                 }
+                .padding(.horizontal, Theme.s4)
+                .padding(.vertical, Theme.s3)
+                .background(Theme.ink.opacity(0.96))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(accent(for: toast.kind).opacity(0.75), lineWidth: 1)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .shadow(color: Theme.ink.opacity(0.22), radius: 12, x: 0, y: 6)
+                .padding(.horizontal, Theme.s5)
+                .padding(.bottom, 96)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .id(toast.id)
             }
-            .animation(.spring(response: 0.32, dampingFraction: 0.86), value: center.current)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .animation(.spring(response: 0.32, dampingFraction: 0.86), value: center.current)
+        .allowsHitTesting(false)
     }
 
     private func symbol(for kind: ToastMessage.Kind) -> String {
@@ -83,5 +90,9 @@ private struct ToastOverlay: ViewModifier {
 }
 
 extension View {
-    func toastOverlay() -> some View { modifier(ToastOverlay()) }
+    func toastOverlay() -> some View {
+        overlay(alignment: .bottom) {
+            ToastHost()
+        }
+    }
 }
