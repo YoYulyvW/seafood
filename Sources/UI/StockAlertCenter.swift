@@ -110,6 +110,10 @@ struct StockAlertBanner: View {
 struct StockAlertBubble: View {
     @StateObject private var center = StockAlertCenter.shared
     @Binding var expanded: Bool
+    @AppStorage("alert_bubble_offset_x") private var savedX = 0.0
+    @AppStorage("alert_bubble_offset_y") private var savedY = 0.0
+    @State private var dragTranslation: CGSize = .zero
+    @State private var dragging = false
 
     var body: some View {
         Group {
@@ -123,8 +127,25 @@ struct StockAlertBubble: View {
                 }
             }
         }
-        .animation(.spring(response: 0.32, dampingFraction: 0.86), value: expanded)
-        .animation(.spring(response: 0.32, dampingFraction: 0.86), value: center.lowItems.count)
+        .offset(x: savedX + dragTranslation.width, y: savedY + dragTranslation.height)
+        .gesture(
+            DragGesture(minimumDistance: 6)
+                .onChanged { value in
+                    dragging = true
+                    dragTranslation = value.translation
+                }
+                .onEnded { value in
+                    savedX += value.translation.width
+                    savedY += value.translation.height
+                    // 限制在屏幕内，避免拖丢
+                    savedX = min(max(savedX, -220), 40)
+                    savedY = min(max(savedY, -520), 40)
+                    dragTranslation = .zero
+                    dragging = false
+                }
+        )
+        .animation(dragging ? nil : .spring(response: 0.32, dampingFraction: 0.86), value: expanded)
+        .animation(dragging ? nil : .spring(response: 0.32, dampingFraction: 0.86), value: center.lowItems.count)
     }
 
     private func bubble(_ first: StockRow) -> some View {

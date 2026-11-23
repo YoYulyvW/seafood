@@ -279,10 +279,11 @@ struct SettingsView: View {
                 }
                 .listRowBackground(Theme.surface)
 
-                Picker("TLS", selection: $tls) {
-                    ForEach(Self.tlsOptions) { option in
-                        Text(option.label).tag(option.id)
-                    }
+                VStack(alignment: .leading, spacing: Theme.s2) {
+                    Text("TLS")
+                        .font(.footnote)
+                        .foregroundStyle(Theme.ink3)
+                    InkSegmented(options: Self.tlsOptions.map { ($0.id, $0.label) }, selection: $tls)
                 }
                 .listRowBackground(Theme.surface)
 
@@ -445,12 +446,9 @@ struct SettingsView: View {
             }
             .listRowBackground(Theme.surface)
 
-            Picker("告警样式", selection: $alertStyle) {
-                Text("气泡").tag("bubble")
-                Text("顶部横条").tag("bar")
-            }
-            .pickerStyle(.segmented)
-            .listRowBackground(Theme.surface)
+            InkSegmented(options: [("bubble", "气泡"), ("bar", "顶部横条")], selection: $alertStyle)
+                .padding(.vertical, 4)
+                .listRowBackground(Theme.surface)
 
             Toggle("低库存通知", isOn: $lowStockNotify)
                 .tint(Theme.jade)

@@ -27,6 +27,8 @@ struct OutboundView: View {
     @AppStorage("app_mode") private var appMode = ""
 
     @State private var showResult = false
+    private enum OutSheet: String, Identifiable { case result, history; var id: String { rawValue } }
+    @State private var outSheet: OutSheet?
     @FocusState private var focus: Field?
     private enum Field: Hashable {
         case weight
@@ -117,22 +119,20 @@ struct OutboundView: View {
             }
         }
         .onAppear { loadCategories() }
-        .confirmationDialog("历史客户", isPresented: $showCustomerHistory, titleVisibility: .visible) {
-            let names = SQLiteStore.shared.partyNames("customer")
-            if names.isEmpty {
-                Button("还没有历史记录") {}.disabled(true)
-            } else {
-                ForEach(names, id: \.self) { name in
-                    Button(name) { customer = name }
+        .sheet(item: $outSheet) { sheet in
+            switch sheet {
+            case .result:
+                if let result {
+                    OutboundResultSheet(result: result) {
+                        outSheet = nil
+                        showResult = false
+                        loadCategories()
+                    }
                 }
-            }
-            Button("取消", role: .cancel) {}
-        }
-        .sheet(isPresented: $showResult) {
-            if let result {
-                OutboundResultSheet(result: result) {
-                    showResult = false
-                    loadCategories()
+            case .history:
+                PartyHistorySheet(title: "历史客户",
+                                  names: SQLiteStore.shared.partyNames("customer")) { picked in
+                    customer = picked
                 }
             }
         }
@@ -218,13 +218,10 @@ struct OutboundView: View {
                         Text("单位")
                             .font(Theme.label())
                             .foregroundStyle(Theme.ink3)
-                        Picker("单位", selection: $unit) {
-                            ForEach(WeightUnit.allCases) { item in
-                                Text(item.label).tag(item)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                        .frame(width: 108)
+                        InkSegmented(options: WeightUnit.allCases.map { ($0.rawValue, $0.label) },
+                                     selection: Binding(get: { unit.rawValue },
+                                                        set: { unit = WeightUnit(rawValue: $0) ?? .jin }))
+                            .frame(width: 108)
                     }
                 }
 
@@ -353,7 +350,7 @@ struct OutboundView: View {
                         )
                         .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
                         .contentShape(Rectangle())
-                        .onTapGesture { showCustomerHistory = true }
+                        .onTapGesture { outSheet = .history }
                         .accessibilityLabel("选择历史客户")
                         .accessibilityAddTraits(.isButton)
                 }
@@ -481,6 +478,7 @@ struct OutboundView: View {
             SQLiteStore.shared.addPartyName("customer", customer)
             StockAlertCenter.shared.refresh()
             ToastCenter.shared.show("出库成功 · " + res.docNo, kind: .success)
+            outSheet = .result
             showResult = true
             Task { await LowStockNotifier.shared.check() }
             Task { @MainActor in

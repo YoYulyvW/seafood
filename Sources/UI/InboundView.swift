@@ -71,16 +71,11 @@ struct InboundView: View {
             .padding(.bottom, Theme.s6)
         }
         .scrollDismissesKeyboard(.interactively)
-        .confirmationDialog("历史供应商", isPresented: $showSupplierHistory, titleVisibility: .visible) {
-            let names = SQLiteStore.shared.partyNames("supplier")
-            if names.isEmpty {
-                Button("还没有历史记录") {}.disabled(true)
-            } else {
-                ForEach(names, id: \.self) { name in
-                    Button(name) { supplier = name }
-                }
+        .sheet(isPresented: $showSupplierHistory) {
+            PartyHistorySheet(title: "历史供应商",
+                              names: SQLiteStore.shared.partyNames("supplier")) { picked in
+                supplier = picked
             }
-            Button("取消", role: .cancel) {}
         }
         .background(PaperBackground())
         .toolbar {
@@ -161,13 +156,10 @@ struct InboundView: View {
                 HStack {
                     CardTitle("重量")
                     Spacer()
-                    Picker("单位", selection: $unit) {
-                        ForEach(WeightUnit.allCases) { item in
-                            Text(item.label).tag(item)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .frame(width: 118)
+                    InkSegmented(options: WeightUnit.allCases.map { ($0.rawValue, $0.label) },
+                                 selection: Binding(get: { unit.rawValue },
+                                                    set: { unit = WeightUnit(rawValue: $0) ?? .jin }))
+                        .frame(width: 118)
                 }
 
                 TextField(unit.prompt, text: $weightText)

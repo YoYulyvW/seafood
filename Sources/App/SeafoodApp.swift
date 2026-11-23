@@ -7,7 +7,7 @@ struct SeafoodApp: App {
             RootView()
                 .environmentObject(SyncEngine.shared)
                 .environmentObject(UpdateChecker.shared)
-                .tint(Theme.ink)
+                .tint(Theme.signal)
                 .preferredColorScheme(.light)
         }
     }

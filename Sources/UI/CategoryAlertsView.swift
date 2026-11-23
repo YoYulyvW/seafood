@@ -45,6 +45,7 @@ struct CategoryAlertsView: View {
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(PaperBackground())
+        .tint(Theme.signal)
         .navigationTitle("品类与预警")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -100,6 +101,7 @@ private struct CategoryEditor: View {
         NavigationStack {
             Form {
                 Section("基本") {
+
                     TextField("品类名", text: $name)
                     Picker("存储方式", selection: $storage) {
                         ForEach(StorageKind.allCases) { kind in
@@ -127,6 +129,9 @@ private struct CategoryEditor: View {
                     }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(PaperBackground())
+            .tint(Theme.signal)
             .navigationTitle(category == nil ? "新建品类" : "编辑品类")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
