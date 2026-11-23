@@ -71,7 +71,17 @@ struct InboundView: View {
             .padding(.bottom, Theme.s6)
         }
         .scrollDismissesKeyboard(.interactively)
-
+        .confirmationDialog("历史供应商", isPresented: $showSupplierHistory, titleVisibility: .visible) {
+            let names = SQLiteStore.shared.partyNames("supplier")
+            if names.isEmpty {
+                Button("还没有历史记录", role: .disabled) {}
+            } else {
+                ForEach(names, id: \.self) { name in
+                    Button(name) { supplier = name }
+                }
+            }
+            Button("取消", role: .cancel) {}
+        }
         .background(PaperBackground())
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
@@ -226,27 +236,20 @@ struct InboundView: View {
                         TextField("例如：北海", text: $supplier)
                             .focused($focus, equals: .supplier)
                             .inkField()
-                        Button {
-                            showSupplierHistory = true
-                        } label: {
-                            Image(systemName: "clock.arrow.circlepath")
-                                .font(.system(size: 16, weight: .medium))
-                                .foregroundStyle(Theme.signal)
-                                .frame(width: 44, height: 44)
-                                .background(Theme.surface)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
-                                        .stroke(Theme.ruleSoft, lineWidth: 1)
-                                )
-                                .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
-                        }
-                        .accessibilityLabel("选择历史供应商")
-                        .sheet(isPresented: $showSupplierHistory) {
-                            PartyHistorySheet(title: "历史供应商",
-                                              names: SQLiteStore.shared.partyNames("supplier")) { picked in
-                                supplier = picked
-                            }
-                        }
+                        Image(systemName: "clock.arrow.circlepath")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundStyle(Theme.signal)
+                            .frame(width: 44, height: 44)
+                            .background(Theme.surface)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
+                                    .stroke(Theme.ruleSoft, lineWidth: 1)
+                            )
+                            .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+                            .contentShape(Rectangle())
+                            .onTapGesture { showSupplierHistory = true }
+                            .accessibilityLabel("选择历史供应商")
+                            .accessibilityAddTraits(.isButton)
                     }
                 }
                 LabeledField("产地") {

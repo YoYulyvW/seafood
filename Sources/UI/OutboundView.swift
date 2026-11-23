@@ -117,6 +117,17 @@ struct OutboundView: View {
             }
         }
         .onAppear { loadCategories() }
+        .confirmationDialog("历史客户", isPresented: $showCustomerHistory, titleVisibility: .visible) {
+            let names = SQLiteStore.shared.partyNames("customer")
+            if names.isEmpty {
+                Button("还没有历史记录", role: .disabled) {}
+            } else {
+                ForEach(names, id: \.self) { name in
+                    Button(name) { customer = name }
+                }
+            }
+            Button("取消", role: .cancel) {}
+        }
         .sheet(isPresented: $showResult) {
             if let result {
                 OutboundResultSheet(result: result) {
@@ -331,27 +342,20 @@ struct OutboundView: View {
                     TextField("例如：北海海鲜楼", text: $customer)
                         .focused($focus, equals: .customer)
                         .inkField()
-                    Button {
-                        showCustomerHistory = true
-                    } label: {
-                        Image(systemName: "clock.arrow.circlepath")
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundStyle(Theme.signal)
-                            .frame(width: 44, height: 44)
-                            .background(Theme.surface)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
-                                    .stroke(Theme.ruleSoft, lineWidth: 1)
-                            )
-                            .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
-                    }
-                    .accessibilityLabel("选择历史客户")
-                    .sheet(isPresented: $showCustomerHistory) {
-                        PartyHistorySheet(title: "历史客户",
-                                          names: SQLiteStore.shared.partyNames("customer")) { picked in
-                            customer = picked
-                        }
-                    }
+                    Image(systemName: "clock.arrow.circlepath")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(Theme.signal)
+                        .frame(width: 44, height: 44)
+                        .background(Theme.surface)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
+                                .stroke(Theme.ruleSoft, lineWidth: 1)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+                        .contentShape(Rectangle())
+                        .onTapGesture { showCustomerHistory = true }
+                        .accessibilityLabel("选择历史客户")
+                        .accessibilityAddTraits(.isButton)
                 }
 
                 if let errorText {
