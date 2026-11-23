@@ -7,6 +7,8 @@ struct RootView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var tab: Tab = .stock
     @State private var showUpdateAlert = false
+    @AppStorage("alert_style") private var alertStyle = "bubble"
+    @State private var bubbleExpanded = false
     @State private var downloadedIPA: URL?
     @AppStorage("update_skipped_build") private var skippedBuild = 0
 
@@ -20,9 +22,18 @@ struct RootView: View {
                 ModeSetupView()
                     .transition(.opacity)
             } else {
-                VStack(spacing: 0) {
-                    StockAlertBanner()
-                    tabs
+                ZStack(alignment: .bottomTrailing) {
+                    VStack(spacing: 0) {
+                        if alertStyle == "bar" {
+                            StockAlertBanner()
+                        }
+                        tabs
+                    }
+                    if alertStyle == "bubble" {
+                        StockAlertBubble(expanded: $bubbleExpanded)
+                            .padding(.trailing, Theme.s4)
+                            .padding(.bottom, 96)
+                    }
                 }
                 .transition(.opacity)
             }
@@ -35,7 +46,16 @@ struct RootView: View {
             StockAlertCenter.shared.refresh()
         }
         .onChange(of: appMode) { _ in autoSyncIfNeeded() }
+        .onChange(of: tab) { _ in bubbleExpanded = false }
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 24).onChanged { _ in
+                if bubbleExpanded { bubbleExpanded = false }
+            }
+        )
         .onChange(of: scenePhase) { phase in
+            if phase != .active {
+                bubbleExpanded = false
+            }
             if phase == .active {
                 checkUpdateOnForeground()
                 checkLowStock()

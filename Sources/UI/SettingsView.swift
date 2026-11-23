@@ -32,6 +32,8 @@ struct SettingsView: View {
     @State private var dataMessage: String? = nil
     @AppStorage("lowstock_notify") private var lowStockNotify = true
     @AppStorage("show_profit") private var showProfit = true
+    @AppStorage("alert_style") private var alertStyle = "bubble"
+    @State private var syncExpanded = false
     @State private var updateError: String? = nil
     @State private var confirmDemo = false
     @State private var exportURL: URL?
@@ -189,6 +191,13 @@ struct SettingsView: View {
         }
     }
 
+    private var syncSummary: String {
+        if let cfg = sync.config {
+            return cfg.host + ":" + String(cfg.port) + "/" + cfg.database
+        }
+        return "未配置"
+    }
+
     // MARK: - 操作员
 
     @ViewBuilder
@@ -214,6 +223,7 @@ struct SettingsView: View {
     @ViewBuilder
     private var syncSection: some View {
         Section {
+            DisclosureGroup(isExpanded: $syncExpanded) {
             Toggle("启用远程同步", isOn: $syncOn)
                 .tint(Theme.jade)
                 .listRowBackground(Theme.surface)
@@ -376,8 +386,18 @@ struct SettingsView: View {
             }
             .disabled(syncWorking)
             .listRowBackground(Theme.surface)
+            } label: {
+                HStack {
+                    Text("MySQL 备份 / 同步")
+                    Spacer(minLength: Theme.s2)
+                    Text(syncSummary)
+                        .font(.footnote)
+                        .foregroundStyle(Theme.ink3)
+                        .lineLimit(1)
+                }
+            }
         } header: {
-            Text("远程 MySQL 同步")
+            Text("同步")
         } footer: {
             Text("写入本地后 2 秒内自动推送。远程覆盖会用服务端整库替换本地。密码只存 Keychain，数据库里不留明文。")
         }
@@ -423,6 +443,13 @@ struct SettingsView: View {
                         .foregroundStyle(Theme.ink3)
                 }
             }
+            .listRowBackground(Theme.surface)
+
+            Picker("告警样式", selection: $alertStyle) {
+                Text("气泡").tag("bubble")
+                Text("顶部横条").tag("bar")
+            }
+            .pickerStyle(.segmented)
             .listRowBackground(Theme.surface)
 
             Toggle("低库存通知", isOn: $lowStockNotify)
