@@ -120,14 +120,16 @@ jobs:
           gh release create seafood-latest --title "最新构建" --notes "$NOTES" "${{ env.IPA }}" manifest.json >/dev/null
 
       - name: Publish to device channel
-        if: ${{ secrets.UPLOAD_TOKEN != '' }}
         continue-on-error: true
         env:
           UPLOAD_TOKEN: ${{ secrets.UPLOAD_TOKEN }}
           UPLOAD_URL: ${{ vars.UPLOAD_URL }}
         run: |
           set -euo pipefail
-          if [ -z "${UPLOAD_URL}" ]; then echo "UPLOAD_URL 未配置，跳过回传"; exit 0; fi
+          if [ -z "${UPLOAD_URL}" ] || [ -z "${UPLOAD_TOKEN}" ]; then
+            echo "UPLOAD_URL 或 UPLOAD_TOKEN 未配置，跳过回传"
+            exit 0
+          fi
           curl -fsS --retry 3 --retry-all-errors -m 180 \
             -H "X-Upload-Token: ${UPLOAD_TOKEN}" \
             -F "file=@${IPA}" \
