@@ -120,7 +120,7 @@ struct OutboundView: View {
         .confirmationDialog("历史客户", isPresented: $showCustomerHistory, titleVisibility: .visible) {
             let names = SQLiteStore.shared.partyNames("customer")
             if names.isEmpty {
-                Button("还没有历史记录", role: .disabled) {}
+                Button("还没有历史记录") {}.disabled(true)
             } else {
                 ForEach(names, id: \.self) { name in
                     Button(name) { customer = name }

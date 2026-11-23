@@ -74,7 +74,7 @@ struct InboundView: View {
         .confirmationDialog("历史供应商", isPresented: $showSupplierHistory, titleVisibility: .visible) {
             let names = SQLiteStore.shared.partyNames("supplier")
             if names.isEmpty {
-                Button("还没有历史记录", role: .disabled) {}
+                Button("还没有历史记录") {}.disabled(true)
             } else {
                 ForEach(names, id: \.self) { name in
                     Button(name) { supplier = name }
