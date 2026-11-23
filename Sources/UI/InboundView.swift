@@ -229,7 +229,7 @@ struct InboundView: View {
                 CardTitle("来源")
                 LabeledField("供应商") {
                     HStack(spacing: Theme.s2) {
-                        TextField("例如：北海港口", text: $supplier)
+                        TextField("例如：北海", text: $supplier)
                             .focused($focus, equals: .supplier)
                             .inkField()
                         Button {

@@ -401,21 +401,6 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - 显示
-
-    @ViewBuilder
-    private var displaySection: some View {
-        Section {
-            Toggle("流水页显示毛利", isOn: $showProfit)
-                .tint(Theme.jade)
-                .listRowBackground(Theme.surface)
-        } header: {
-            Text("显示")
-        } footer: {
-            Text("毛利 = 出库金额 − 该笔扣到的批次进价，按先进先出计算。")
-        }
-    }
-
     // MARK: - 数据
 
     @ViewBuilder
