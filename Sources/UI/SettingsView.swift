@@ -1,0 +1,578 @@
+import SwiftUI
+
+/// 设置页：操作员、远程 MySQL 同步、检查更新、数据维护、关于。
+struct SettingsView: View {
+    @EnvironmentObject private var sync: SyncEngine
+    @EnvironmentObject private var updater: UpdateChecker
+
+    @State private var operatorName = ""
+
+    @State private var syncOn = false
+    @State private var host = ""
+    @State private var port = "3306"
+    @State private var user = ""
+    @State private var password = ""
+    @State private var database = ""
+    @State private var tls = "preferred"
+    @State private var dsnText = ""
+    @State private var syncMessage: String?
+    @State private var syncError: String?
+    @State private var syncWorking = false
+
+    @State private var confirmClear = false
+    @State private var confirmPull = false
+    @State private var dataMessage: String?
+
+    @State private var updateError: String?
+    @State private var localIPA: URL?
+
+    private static let tlsOptions: [(String, String)] = [
+        ("preferred", "首选"),
+        ("required", "强制"),
+        ("disabled", "关闭")
+    ]
+
+    var body: some View {
+        NavigationStack {
+            List {
+                operatorSection
+                syncSection
+                updateSection
+                dataSection
+                aboutSection
+            }
+            .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
+            .background(PaperBackground())
+            .navigationTitle("设置")
+            .navigationBarTitleDisplayMode(.inline)
+            .onAppear { loadFields() }
+            .alert("清空本地数据？", isPresented: $confirmClear) {
+                Button("清空", role: .destructive) { clearAllData() }
+                Button("取消", role: .cancel) {}
+            } message: {
+                Text("品类、批次、流水会全部删除，且不可恢复。远程库不受影响。")
+            }
+            .alert("用远程数据覆盖本地？", isPresented: $confirmPull) {
+                Button("覆盖", role: .destructive) { pullReplace() }
+                Button("取消", role: .cancel) {}
+            } message: {
+                Text("本地品类、批次、流水会被远程整库替换。如果本地还有没推上去的记录，先点“立即同步”。")
+            }
+        }
+    }
+
+    // MARK: - 操作员
+
+    @ViewBuilder
+    private var operatorSection: some View {
+        Section {
+            TextField("例如：小码酱", text: $operatorName)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .submitLabel(.done)
+                .listRowBackground(Theme.surface)
+                .onChange(of: operatorName) { value in
+                    SQLiteStore.shared.setSetting("operator", value)
+                }
+        } header: {
+            Text("操作员")
+        } footer: {
+            Text("会写进每一条流水的操作人字段。")
+        }
+    }
+
+    // MARK: - 远程同步
+
+    @ViewBuilder
+    private var syncSection: some View {
+        Section {
+            Toggle("启用远程同步", isOn: $syncOn)
+                .tint(Theme.jade)
+                .listRowBackground(Theme.surface)
+                .onChange(of: syncOn) { value in
+                    saveConfig(enabled: value)
+                }
+
+            if syncOn {
+                HStack {
+                    Text("主机")
+                    Spacer(minLength: Theme.s2)
+                    TextField("127.0.0.1", text: $host)
+                        .multilineTextAlignment(.trailing)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                }
+                .listRowBackground(Theme.surface)
+
+                HStack {
+                    Text("端口")
+                    Spacer(minLength: Theme.s2)
+                    TextField("3306", text: $port)
+                        .keyboardType(.numberPad)
+                        .multilineTextAlignment(.trailing)
+                }
+                .listRowBackground(Theme.surface)
+
+                HStack {
+                    Text("用户")
+                    Spacer(minLength: Theme.s2)
+                    TextField("root", text: $user)
+                        .multilineTextAlignment(.trailing)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                }
+                .listRowBackground(Theme.surface)
+
+                HStack {
+                    Text("密码")
+                    Spacer(minLength: Theme.s2)
+                    SecureField("", text: $password)
+                        .multilineTextAlignment(.trailing)
+                }
+                .listRowBackground(Theme.surface)
+
+                HStack {
+                    Text("库名")
+                    Spacer(minLength: Theme.s2)
+                    TextField("seafood", text: $database)
+                        .multilineTextAlignment(.trailing)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                }
+                .listRowBackground(Theme.surface)
+
+                Picker("TLS", selection: $tls) {
+                    ForEach(Self.tlsOptions, id: \.0) { option in
+                        Text(option.1).tag(option.0)
+                    }
+                }
+                .listRowBackground(Theme.surface)
+
+                VStack(alignment: .leading, spacing: Theme.s2) {
+                    TextField("mysql://user:pass@host:3306/db", text: $dsnText)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .font(Theme.number(12, weight: .regular))
+                    Button("从 DSN 填充") { fillFromDSN() }
+                        .font(.footnote)
+                        .foregroundStyle(Theme.signal)
+                }
+                .listRowBackground(Theme.surface)
+            }
+
+            syncStateRow
+                .listRowBackground(Theme.surface)
+
+            if let last = sync.lastSync {
+                KVLine(title: "上次同步", value: Fmt.dayTime.string(from: last))
+                    .listRowBackground(Theme.surface)
+            } else {
+                KVLine(title: "上次同步", value: "从未", valueColor: Theme.ink3)
+                    .listRowBackground(Theme.surface)
+            }
+
+            if let syncMessage {
+                Text(syncMessage)
+                    .font(.footnote)
+                    .foregroundStyle(Theme.jade)
+                    .listRowBackground(Theme.surface)
+            }
+            if let syncError {
+                ErrorLine(text: syncError)
+                    .listRowBackground(Theme.surface)
+            }
+
+            Button {
+                testConnection()
+            } label: {
+                HStack {
+                    Text(syncWorking ? "请稍候…" : "测试连接")
+                    Spacer()
+                    Image(systemName: "bolt.horizontal")
+                        .font(.footnote)
+                        .foregroundStyle(Theme.ink3)
+                }
+            }
+            .disabled(syncWorking)
+            .listRowBackground(Theme.surface)
+
+            Button {
+                runSync()
+            } label: {
+                HStack {
+                    Text("立即同步")
+                    Spacer()
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.footnote)
+                        .foregroundStyle(Theme.ink3)
+                }
+            }
+            .disabled(syncWorking)
+            .listRowBackground(Theme.surface)
+
+            Button(role: .destructive) {
+                confirmPull = true
+            } label: {
+                HStack {
+                    Text("从远程覆盖本地")
+                    Spacer()
+                    Image(systemName: "arrow.down.doc")
+                        .font(.footnote)
+                }
+            }
+            .disabled(syncWorking)
+            .listRowBackground(Theme.surface)
+        } header: {
+            Text("远程 MySQL 同步")
+        } footer: {
+            Text("写入本地后 2 秒内自动推送。远程覆盖会用服务端整库替换本地。")
+        }
+    }
+
+    @ViewBuilder
+    private var syncStateRow: some View {
+        switch sync.state {
+        case .idle:
+            KVLine(title: "同步状态", value: "未同步", valueColor: Theme.ink3)
+        case .syncing:
+            HStack(spacing: Theme.s2) {
+                Text("同步状态")
+                    .font(.subheadline)
+                    .foregroundStyle(Theme.ink3)
+                Spacer(minLength: Theme.s2)
+                ProgressView()
+                    .scaleEffect(0.8)
+                Text("同步中…")
+                    .font(.footnote)
+                    .foregroundStyle(Theme.ink2)
+            }
+        case .success(let date):
+            KVLine(title: "同步状态", value: "成功 · " + Fmt.dayTime.string(from: date), valueColor: Theme.jade)
+        case .failed(let message):
+            ErrorLine(text: "同步失败：" + message)
+        }
+    }
+
+    // MARK: - 检查更新
+
+    @ViewBuilder
+    private var updateSection: some View {
+        Section {
+            KVLine(title: "当前版本", value: updater.currentVersion + " (" + String(updater.currentBuild) + ")")
+                .listRowBackground(Theme.surface)
+
+            Button {
+                checkUpdate()
+            } label: {
+                HStack {
+                    Text(updater.checking ? "检查中…" : "检查更新")
+                    Spacer()
+                    if updater.checking {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                    } else {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.footnote)
+                            .foregroundStyle(Theme.ink3)
+                    }
+                }
+            }
+            .disabled(updater.checking || updater.downloading)
+            .listRowBackground(Theme.surface)
+
+            if let latest = updater.latest {
+                VStack(alignment: .leading, spacing: Theme.s2) {
+                    KVLine(title: "线上版本", value: latest.version + " (" + String(latest.build) + ")")
+                    if !latest.notes.isEmpty {
+                        Text(latest.notes)
+                            .font(.footnote)
+                            .foregroundStyle(Theme.ink2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    KVLine(title: "安装包", value: ByteSize.text(latest.size))
+                    if updater.hasUpdate {
+                        if updater.downloading {
+                            ProgressTrack(value: updater.progress)
+                                .padding(.vertical, 4)
+                            Text("下载中 " + String(Int(updater.progress * 100)) + "%")
+                                .font(.caption)
+                                .foregroundStyle(Theme.ink3)
+                        } else if let localIPA {
+                            Button {
+                                installUpdate(latest)
+                            } label: {
+                                Text("用 TrollStore 安装")
+                                    .font(.footnote)
+                                    .foregroundStyle(Theme.signal)
+                            }
+                            Text(localIPA.lastPathComponent)
+                                .font(.caption2)
+                                .foregroundStyle(Theme.ink3)
+                                .lineLimit(1)
+                        } else {
+                            Button {
+                                downloadUpdate(latest)
+                            } label: {
+                                Text("下载更新")
+                                    .font(.footnote)
+                                    .foregroundStyle(Theme.signal)
+                            }
+                        }
+                    } else {
+                        Text("已是最新版本")
+                            .font(.footnote)
+                            .foregroundStyle(Theme.jade)
+                    }
+                }
+                .listRowBackground(Theme.surface)
+            }
+
+            if let updateError {
+                ErrorLine(text: updateError)
+                    .listRowBackground(Theme.surface)
+            }
+        } header: {
+            Text("检查更新")
+        } footer: {
+            Text("安装包下载后校验大小与 sha256，再交给 TrollStore 安装。")
+        }
+    }
+
+    // MARK: - 数据
+
+    @ViewBuilder
+    private var dataSection: some View {
+        Section {
+            Button(role: .destructive) {
+                confirmClear = true
+            } label: {
+                Text("清空本地数据")
+            }
+            .listRowBackground(Theme.surface)
+
+            Button {
+                reseed()
+            } label: {
+                Text("重新灌演示数据")
+            }
+            .listRowBackground(Theme.surface)
+
+            if let dataMessage {
+                Text(dataMessage)
+                    .font(.footnote)
+                    .foregroundStyle(Theme.ink3)
+                    .listRowBackground(Theme.surface)
+            }
+        } header: {
+            Text("数据")
+        } footer: {
+            Text("清空后需要重新录入，或从远程同步拉回。")
+        }
+    }
+
+    // MARK: - 关于
+
+    @ViewBuilder
+    private var aboutSection: some View {
+        Section {
+            KVLine(title: "版本", value: updater.currentVersion)
+                .listRowBackground(Theme.surface)
+            KVLine(title: "构建号", value: String(updater.currentBuild))
+                .listRowBackground(Theme.surface)
+            KVLine(title: "数据存储", value: "本地 SQLite", valueColor: Theme.ink3)
+                .listRowBackground(Theme.surface)
+        } header: {
+            Text("关于")
+        } footer: {
+            Text("纸色磅单 · 本地优先 · 无第三方依赖")
+        }
+    }
+
+    // MARK: - 同步动作
+
+    private func loadFields() {
+        operatorName = SQLiteStore.shared.setting("operator")
+        let config = sync.config
+        syncOn = config != nil
+        if let config {
+            host = config.host
+            port = String(config.port)
+            user = config.user
+            password = config.password
+            database = config.database
+            tls = config.tls
+            dsnText = config.dsn
+        } else {
+            host = "127.0.0.1"
+            port = "3306"
+            user = "root"
+            database = "seafood"
+            tls = "preferred"
+        }
+    }
+
+    private func buildConfig() -> MySQLConfig? {
+        let trimmedHost = host.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedHost.isEmpty else { return nil }
+        let trimmedPort = port.trimmingCharacters(in: .whitespacesAndNewlines)
+        return MySQLConfig(
+            host: trimmedHost,
+            port: Int(trimmedPort) ?? 3306,
+            user: user.trimmingCharacters(in: .whitespacesAndNewlines),
+            password: password,
+            database: database.trimmingCharacters(in: .whitespacesAndNewlines),
+            tls: tls
+        )
+    }
+
+    private func saveConfig(enabled: Bool) {
+        guard enabled else {
+            sync.saveConfig(nil)
+            syncMessage = nil
+            syncError = nil
+            return
+        }
+        guard let config = buildConfig() else {
+            syncError = "请填写主机地址"
+            return
+        }
+        sync.saveConfig(config)
+        syncError = nil
+        syncMessage = "连接配置已保存"
+    }
+
+    private func fillFromDSN() {
+        syncError = nil
+        syncMessage = nil
+        let raw = dsnText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let config = MySQLConfig(dsn: raw) else {
+            syncError = "DSN 格式不正确，示例 mysql://root:pass@127.0.0.1:3306/seafood"
+            return
+        }
+        host = config.host
+        port = String(config.port)
+        user = config.user
+        password = config.password
+        database = config.database
+        tls = config.tls
+        syncOn = true
+        sync.saveConfig(config)
+        syncMessage = "已从 DSN 解析并保存"
+    }
+
+    private func testConnection() {
+        syncError = nil
+        syncMessage = nil
+        guard let config = buildConfig() else {
+            syncError = "请填写主机地址"
+            return
+        }
+        sync.saveConfig(config)
+        syncOn = true
+        syncWorking = true
+        Task {
+            do {
+                let info = try await sync.testConnection()
+                syncMessage = "连接成功：" + info
+                Haptic.success()
+            } catch {
+                syncError = uiErrorText(error)
+                Haptic.error()
+            }
+            syncWorking = false
+        }
+    }
+
+    private func runSync() {
+        syncError = nil
+        syncMessage = nil
+        guard let config = buildConfig() else {
+            syncError = "请先填写连接信息"
+            return
+        }
+        sync.saveConfig(config)
+        syncWorking = true
+        Task {
+            do {
+                let report = try await sync.syncNow()
+                syncMessage = "同步完成：推送 " + String(report.pushed) + " 条，拉取 " + String(report.pulled) + " 条"
+                Haptic.success()
+            } catch {
+                syncError = uiErrorText(error)
+                Haptic.error()
+            }
+            syncWorking = false
+        }
+    }
+
+    private func pullReplace() {
+        syncError = nil
+        syncMessage = nil
+        syncWorking = true
+        Task {
+            do {
+                let report = try await sync.pullReplace()
+                syncMessage = "已用远程覆盖本地：拉取 " + String(report.pulled) + " 条"
+                Haptic.success()
+            } catch {
+                syncError = uiErrorText(error)
+                Haptic.error()
+            }
+            syncWorking = false
+        }
+    }
+
+    // MARK: - 更新动作
+
+    private func checkUpdate() {
+        updateError = nil
+        Task {
+            await updater.check()
+            if let text = updater.errorText {
+                updateError = text
+            }
+        }
+    }
+
+    private func downloadUpdate(_ info: UpdateInfo) {
+        updateError = nil
+        Task {
+            do {
+                localIPA = try await updater.download(info)
+                Haptic.success()
+            } catch {
+                updateError = uiErrorText(error)
+                Haptic.error()
+            }
+        }
+    }
+
+    private func installUpdate(_ info: UpdateInfo) {
+        updateError = nil
+        Task {
+            do {
+                try await updater.installWithTrollStore(info, localFile: localIPA)
+            } catch {
+                updateError = uiErrorText(error)
+                Haptic.error()
+            }
+        }
+    }
+
+    // MARK: - 数据动作
+
+    private func clearAllData() {
+        SQLiteStore.shared.resetAll()
+        localIPA = nil
+        dataMessage = "本地数据已清空"
+        Haptic.warning()
+    }
+
+    private func reseed() {
+        SQLiteStore.shared.resetAll()
+        SQLiteStore.shared.seedIfNeeded()
+        dataMessage = "演示数据已重新生成"
+        Haptic.success()
+    }
+}

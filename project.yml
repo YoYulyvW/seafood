@@ -1,0 +1,40 @@
+name: SeafoodInventory
+options:
+  bundleIdPrefix: com.yoyulyvw
+  deploymentTarget:
+    iOS: "16.4"
+  createIntermediateGroups: true
+  groupSortPosition: top
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    ENABLE_BITCODE: "NO"
+    IPHONEOS_DEPLOYMENT_TARGET: "16.4"
+    CODE_SIGNING_ALLOWED: "NO"
+    CODE_SIGNING_REQUIRED: "NO"
+    CODE_SIGN_IDENTITY: ""
+    AD_HOC_CODE_SIGNING_ALLOWED: "YES"
+
+targets:
+  SeafoodInventory:
+    type: application
+    platform: iOS
+    deploymentTarget: "16.4"
+    sources:
+      - path: Sources
+        excludes:
+          - "Info.plist"
+    dependencies:
+      - sdk: libsqlite3.tbd
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.yoyulyvw.seafood
+        PRODUCT_NAME: Seafood
+        MARKETING_VERSION: "1.0.0"
+        CURRENT_PROJECT_VERSION: "1"
+        INFOPLIST_FILE: Sources/Info.plist
+        GENERATE_INFOPLIST_FILE: "NO"
+        TARGETED_DEVICE_FAMILY: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: ""
+        DEVELOPMENT_ASSET_PATHS: ""
