@@ -374,7 +374,7 @@ final class SQLiteStore {
             if let existing = categories(includeInactive: true).first(where: { $0.name == name && !$0.deleted }) {
                 targetID = existing.id
             } else {
-                targetID = try createCategory(name: name, storage: storage, warnJin: 0, allowNegative: false).id
+                targetID = try createCategory(name: name, storage: storage, warnJin: 20, allowNegative: false).id
             }
         }
         guard let catID = targetID else { throw InventoryError.message("请选择品类") }
@@ -545,6 +545,28 @@ final class SQLiteStore {
               m.batchID.map { Value.text($0) } ?? .null, .int(Int64(m.qtyCentijin)),
               .int(Int64(m.unitPriceCent)), .int(Int64(m.amountCent)), .text(m.party),
               .text(m.operatorName), .text(m.docNo), .text(m.note), .int(m.updatedAt)])
+    }
+
+    /// 每条出库流水的进货成本（按 FIFO 扣到的那批的进价算），给流水页算毛利。
+    func outCosts(movements: [Movement]) -> [String: Int] {
+        let outs = movements.filter { $0.kind == .out }
+        guard !outs.isEmpty else { return [:] }
+        var result: [String: Int] = [:]
+        var index = 0
+        while index < outs.count {
+            let chunk = Array(outs[index..<min(index + 200, outs.count)])
+            let holders = Array(repeating: "?", count: chunk.count).joined(separator: ",")
+            let sql = "SELECT m.id, m.qty_centijin, COALESCE(b.unit_cost_cent, 0) "
+                + "FROM movement m LEFT JOIN batch b ON b.id = m.batch_id WHERE m.id IN (" + holders + ")"
+            rows(sql, chunk.map { Value.text($0.id) }) { st in
+                let id = text(st, 0)
+                let qty = Int(int(st, 1))
+                let unit = Int(int(st, 2))
+                result[id] = abs(qty) * unit / 100
+            }
+            index += 200
+        }
+        return result
     }
 
     // MARK: - 同步支持

@@ -8,6 +8,8 @@ struct FlowView: View {
     @State private var categoryID: String? = nil
     @State private var categories: [Category] = []
     @State private var rows: [Movement] = []
+    @State private var costMap: [String: Int] = [:]
+    @AppStorage("show_profit") private var showProfit = true
 
     /// 一天一组。
     struct FlowGroup: Identifiable {
@@ -42,6 +44,15 @@ struct FlowView: View {
 
     private var outAmountCent: Int {
         rows.filter { $0.kind == .out }.reduce(0) { $0 + $1.amountCent }
+    }
+
+    /// 毛利 = 出库金额 − 对应批次进价成本
+    private var profitCent: Int {
+        rows.filter { $0.kind == .out }.reduce(0) { $0 + ($1.amountCent - (costMap[$1.id] ?? 0)) }
+    }
+
+    private func profit(of item: Movement) -> Int {
+        item.amountCent - (costMap[item.id] ?? 0)
     }
 
     private var groups: [FlowGroup] {
@@ -125,6 +136,20 @@ struct FlowView: View {
                     Text("\(rows.count) 条")
                         .font(Theme.label())
                         .foregroundStyle(Theme.ink3)
+                }
+                if showProfit {
+                    HStack(spacing: Theme.s2) {
+                        Text("毛利")
+                            .font(Theme.label())
+                            .foregroundStyle(Theme.ink3)
+                        Text(Units.formatYuan(profitCent))
+                            .font(Theme.number(13))
+                            .foregroundStyle(profitCent >= 0 ? Theme.jade : Theme.signal)
+                        Text("按批次进价")
+                            .font(.caption2)
+                            .foregroundStyle(Theme.ink3)
+                        Spacer(minLength: 0)
+                    }
                 }
 
                 RuleDivider()
@@ -228,6 +253,11 @@ struct FlowView: View {
                         .foregroundStyle(Theme.ink2)
                         .lineLimit(1)
                 }
+                if showProfit, item.kind == .out {
+                    Text("利 " + Units.formatYuan(profit(of: item)))
+                        .font(Theme.number(10, weight: .regular))
+                        .foregroundStyle(profit(of: item) >= 0 ? Theme.jade : Theme.signal)
+                }
                 Spacer(minLength: Theme.s2)
                 Text(Units.formatYuan(item.amountCent))
                     .font(Theme.number(11, weight: .regular))
@@ -255,5 +285,6 @@ struct FlowView: View {
     private func load() {
         categories = SQLiteStore.shared.allCategories()
         rows = SQLiteStore.shared.movements(from: from, to: to, kind: kind, categoryID: categoryID, limit: 500)
+        costMap = SQLiteStore.shared.outCosts(movements: rows)
     }
 }

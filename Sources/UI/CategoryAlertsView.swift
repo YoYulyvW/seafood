@@ -142,7 +142,10 @@ private struct CategoryEditor: View {
     }
 
     private func load() {
-        guard let category else { return }
+        guard let category else {
+            warnText = "20"
+            return
+        }
         name = category.name
         storage = category.storage
         warnText = category.warnCentijin > 0 ? Units.formatJin(category.warnCentijin) : ""

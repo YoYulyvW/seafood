@@ -30,6 +30,7 @@ struct SettingsView: View {
     @State private var confirmPull = false
     @State private var dataMessage: String? = nil
     @AppStorage("lowstock_notify") private var lowStockNotify = true
+    @AppStorage("show_profit") private var showProfit = true
     @State private var updateError: String? = nil
     @State private var localIPA: URL? = nil
 
@@ -51,6 +52,7 @@ struct SettingsView: View {
                 operatorSection
                 syncSection
                 alertSection
+                displaySection
                 dataSection
                 aboutSection
             }
@@ -399,6 +401,21 @@ struct SettingsView: View {
         }
     }
 
+    // MARK: - 显示
+
+    @ViewBuilder
+    private var displaySection: some View {
+        Section {
+            Toggle("流水页显示毛利", isOn: $showProfit)
+                .tint(Theme.jade)
+                .listRowBackground(Theme.surface)
+        } header: {
+            Text("显示")
+        } footer: {
+            Text("毛利 = 出库金额 − 该笔扣到的批次进价，按先进先出计算。")
+        }
+    }
+
     // MARK: - 数据
 
     @ViewBuilder
@@ -724,6 +741,21 @@ struct SettingsView: View {
                 updateError = uiErrorText(error)
                 Haptic.error()
             }
+        }
+    }
+
+    // MARK: - 显示
+
+    @ViewBuilder
+    private var displaySection: some View {
+        Section {
+            Toggle("流水页显示毛利", isOn: $showProfit)
+                .tint(Theme.jade)
+                .listRowBackground(Theme.surface)
+        } header: {
+            Text("显示")
+        } footer: {
+            Text("毛利 = 出库金额 − 该笔扣到的批次进价，按先进先出计算。")
         }
     }
 
