@@ -19,6 +19,7 @@ struct OutboundView: View {
     @State private var priceText = ""
     @State private var items: [PendingItem] = []
     @State private var customer = ""
+    @State private var showCustomerHistory = false
     @State private var errorText: String? = nil
     @State private var submitting = false
     @State private var result: OutboundResult? = nil
@@ -109,6 +110,12 @@ struct OutboundView: View {
         .background(PaperBackground())
         .scrollDismissesKeyboard(.interactively)
         .toastOverlay()
+        .sheet(isPresented: $showCustomerHistory) {
+            PartyHistorySheet(title: "历史客户",
+                              names: SQLiteStore.shared.partyNames("customer")) { picked in
+                customer = picked
+            }
+        }
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
@@ -326,9 +333,26 @@ struct OutboundView: View {
         Card {
             VStack(alignment: .leading, spacing: Theme.s3) {
                 CardTitle("客户")
-                TextField("例如：老陈水产", text: $customer)
-                    .focused($focus, equals: .customer)
-                    .inkField()
+                HStack(spacing: Theme.s2) {
+                    TextField("例如：北海海鲜楼", text: $customer)
+                        .focused($focus, equals: .customer)
+                        .inkField()
+                    Button {
+                        showCustomerHistory = true
+                    } label: {
+                        Image(systemName: "clock.arrow.circlepath")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundStyle(Theme.signal)
+                            .frame(width: 44, height: 44)
+                            .background(Theme.surface)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
+                                    .stroke(Theme.ruleSoft, lineWidth: 1)
+                            )
+                            .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+                    }
+                    .accessibilityLabel("选择历史客户")
+                }
 
                 if let errorText {
                     ErrorLine(text: errorText)
@@ -450,6 +474,7 @@ struct OutboundView: View {
             weightText = ""
             priceText = ""
             Haptic.success()
+            SQLiteStore.shared.addPartyName("customer", customer)
             ToastCenter.shared.show("出库成功 · " + res.docNo, kind: .success)
             showResult = true
             Task { await LowStockNotifier.shared.check() }

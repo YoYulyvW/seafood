@@ -147,6 +147,12 @@ final class SQLiteStore {
         );
         CREATE INDEX IF NOT EXISTS idx_mov_ts ON movement(ts);
         CREATE INDEX IF NOT EXISTS idx_mov_cat ON movement(category_id, ts);
+        CREATE TABLE IF NOT EXISTS party_history (
+            kind TEXT NOT NULL,
+            name TEXT NOT NULL,
+            used_at INTEGER NOT NULL,
+            PRIMARY KEY(kind, name)
+        );
         CREATE TABLE IF NOT EXISTS setting (k TEXT PRIMARY KEY, v TEXT NOT NULL);
         INSERT OR IGNORE INTO setting(k, v) VALUES ('sync_last_at', '0');
         INSERT OR IGNORE INTO setting(k, v) VALUES ('operator', '');
@@ -699,6 +705,24 @@ final class SQLiteStore {
         }
     }
 
+    // MARK: - 供应商 / 客户历史
+
+    func addPartyName(_ kind: String, _ name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        try? run("""
+        INSERT INTO party_history(kind, name, used_at) VALUES (?, ?, ?)
+        ON CONFLICT(kind, name) DO UPDATE SET used_at = excluded.used_at
+        """, [.text(kind), .text(trimmed), .int(Fmt.millis())])
+    }
+
+    func partyNames(_ kind: String, limit: Int = 30) -> [String] {
+        var out: [String] = []
+        rows("SELECT name FROM party_history WHERE kind = ? ORDER BY used_at DESC LIMIT ?",
+             [.text(kind), .int(Int64(limit))]) { out.append(text($0, 0)) }
+        return out
+    }
+
     // MARK: - 演示数据
 
     /// 只在“这台机器第一次打开 App”时灌演示数据。
@@ -735,19 +759,19 @@ final class SQLiteStore {
             }
         }
         let ins: [(String, Double, Double, String, String, TimeInterval)] = [
-            ("基围虾", 60, 43, "霞浦直发", "霞浦", -2 * 86400 - 6 * 3600),
-            ("三文鱼", 240, 58.8, "挪威冻品", "挪威", -4 * 86400),
-            ("南美白对虾", 120, 31.4, "湛江冻品", "湛江", -3 * 86400),
-            ("花蛤", 200, 9.9, "连江", "连江", -86400),
-            ("鲈鱼", 96, 18.5, "本地塘口", "本地", -2 * 86400),
-            ("生蚝", 100, 22, "湛江", "湛江", -3 * 86400),
-            ("梭子蟹", 160.5, 65, "舟山", "舟山", -86400),
-            ("小黄鱼", 120, 15, "舟山冻品", "舟山", -4 * 86400),
-            ("基围虾", 120, 42.5, "霞浦直发", "霞浦", -86400),
-            ("基围虾", 60, 41, "霞浦直发", "霞浦", -3600),
-            ("三文鱼", 40, 57, "挪威冻品", "挪威", -3000),
-            ("南美白对虾", 150.2, 30.8, "湛江冻品", "湛江", -86400),
-            ("花蛤", 26, 9.6, "连江", "连江", -2400)
+            ("基围虾", 60, 43, "北海港口", "北海", -2 * 86400 - 6 * 3600),
+            ("三文鱼", 240, 58.8, "北海冻品", "挪威", -4 * 86400),
+            ("南美白对虾", 120, 31.4, "北海冻品", "北海", -3 * 86400),
+            ("花蛤", 200, 9.9, "北海铁山港", "北海", -86400),
+            ("鲈鱼", 96, 18.5, "北海本地塘口", "北海", -2 * 86400),
+            ("生蚝", 100, 22, "北海", "北海", -3 * 86400),
+            ("梭子蟹", 160.5, 65, "北海涠洲", "北海", -86400),
+            ("小黄鱼", 120, 15, "北海冻品", "北海", -4 * 86400),
+            ("基围虾", 120, 42.5, "北海港口", "北海", -86400),
+            ("基围虾", 60, 41, "北海港口", "北海", -3600),
+            ("三文鱼", 40, 57, "北海冻品", "挪威", -3000),
+            ("南美白对虾", 150.2, 30.8, "北海冻品", "北海", -86400),
+            ("花蛤", 26, 9.6, "北海铁山港", "北海", -2400)
         ]
         for (name, jin, cost, supplier, origin, offset) in ins {
             guard let id = ids[name] else { continue }

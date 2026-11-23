@@ -19,6 +19,7 @@ struct InboundView: View {
     @State private var unit: WeightUnit = .jin
     @State private var costText = ""
     @State private var supplier = ""
+    @State private var showSupplierHistory = false
     @State private var origin = ""
     @State private var note = ""
     @State private var errorText: String? = nil
@@ -71,6 +72,12 @@ struct InboundView: View {
         }
         .scrollDismissesKeyboard(.interactively)
         .toastOverlay()
+        .sheet(isPresented: $showSupplierHistory) {
+            PartyHistorySheet(title: "历史供应商",
+                              names: SQLiteStore.shared.partyNames("supplier")) { picked in
+                supplier = picked
+            }
+        }
         .background(PaperBackground())
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
@@ -221,12 +228,29 @@ struct InboundView: View {
             VStack(alignment: .leading, spacing: Theme.s3) {
                 CardTitle("来源")
                 LabeledField("供应商") {
-                    TextField("例如：霞浦直发", text: $supplier)
-                        .focused($focus, equals: .supplier)
-                        .inkField()
+                    HStack(spacing: Theme.s2) {
+                        TextField("例如：北海港口", text: $supplier)
+                            .focused($focus, equals: .supplier)
+                            .inkField()
+                        Button {
+                            showSupplierHistory = true
+                        } label: {
+                            Image(systemName: "clock.arrow.circlepath")
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundStyle(Theme.signal)
+                                .frame(width: 44, height: 44)
+                                .background(Theme.surface)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
+                                        .stroke(Theme.ruleSoft, lineWidth: 1)
+                                )
+                                .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+                        }
+                        .accessibilityLabel("选择历史供应商")
+                    }
                 }
                 LabeledField("产地") {
-                    TextField("例如：霞浦", text: $origin)
+                    TextField("例如：北海", text: $origin)
                         .focused($focus, equals: .origin)
                         .inkField()
                 }
@@ -356,6 +380,7 @@ struct InboundView: View {
             weightText = ""
             errorText = nil
             Haptic.success()
+            SQLiteStore.shared.addPartyName("supplier", trimmedSupplier)
             ToastCenter.shared.show("入库成功 · " + res.docNo, kind: .success)
             loadCategories()
             if newMode,
