@@ -71,13 +71,7 @@ struct InboundView: View {
             .padding(.bottom, Theme.s6)
         }
         .scrollDismissesKeyboard(.interactively)
-        .toastOverlay()
-        .sheet(isPresented: $showSupplierHistory) {
-            PartyHistorySheet(title: "历史供应商",
-                              names: SQLiteStore.shared.partyNames("supplier")) { picked in
-                supplier = picked
-            }
-        }
+
         .background(PaperBackground())
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
@@ -247,6 +241,12 @@ struct InboundView: View {
                                 .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
                         }
                         .accessibilityLabel("选择历史供应商")
+                        .sheet(isPresented: $showSupplierHistory) {
+                            PartyHistorySheet(title: "历史供应商",
+                                              names: SQLiteStore.shared.partyNames("supplier")) { picked in
+                                supplier = picked
+                            }
+                        }
                     }
                 }
                 LabeledField("产地") {

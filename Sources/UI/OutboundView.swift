@@ -109,13 +109,7 @@ struct OutboundView: View {
         .scrollContentBackground(.hidden)
         .background(PaperBackground())
         .scrollDismissesKeyboard(.interactively)
-        .toastOverlay()
-        .sheet(isPresented: $showCustomerHistory) {
-            PartyHistorySheet(title: "历史客户",
-                              names: SQLiteStore.shared.partyNames("customer")) { picked in
-                customer = picked
-            }
-        }
+
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
@@ -352,6 +346,12 @@ struct OutboundView: View {
                             .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
                     }
                     .accessibilityLabel("选择历史客户")
+                    .sheet(isPresented: $showCustomerHistory) {
+                        PartyHistorySheet(title: "历史客户",
+                                          names: SQLiteStore.shared.partyNames("customer")) { picked in
+                            customer = picked
+                        }
+                    }
                 }
 
                 if let errorText {

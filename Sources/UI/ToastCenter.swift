@@ -1,78 +1,113 @@
 import SwiftUI
+import UIKit
 
 struct ToastMessage: Identifiable, Equatable {
-    enum Kind {
-        case info, success, error
-    }
+    enum Kind { case info, success, error }
     let id = UUID()
     var text: String
     var kind: Kind = .info
 }
 
-/// 全局轻提示：底部浮一条，2 秒自动消失，不打断输入。
+/// 全局轻提示：独立 UIWindow 承载，永远只有一条，且能盖在 sheet 之上。
 @MainActor
-final class ToastCenter: ObservableObject {
+final class ToastCenter {
     static let shared = ToastCenter()
 
-    @Published fileprivate(set) var current: ToastMessage?
-    private var dismissTask: Task<Void, Never>?
+    private var window: UIWindow?
+    private var hideTask: Task<Void, Never>?
 
     func show(_ text: String, kind: ToastMessage.Kind = .info) {
-        dismissTask?.cancel()
-        withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
-            current = ToastMessage(text: text, kind: kind)
-        }
-        dismissTask = Task { @MainActor in
+        hideTask?.cancel()
+        present(ToastMessage(text: text, kind: kind))
+        hideTask = Task { @MainActor in
             try? await Task.sleep(nanoseconds: 2_000_000_000)
             guard !Task.isCancelled else { return }
-            withAnimation(.easeOut(duration: 0.22)) {
-                current = nil
-            }
+            dismiss()
         }
+    }
+
+    private func ensureWindow() -> UIWindow? {
+        if let window { return window }
+        guard let scene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first(where: { $0.activationState == .foregroundActive })
+            ?? UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first
+        else { return nil }
+
+        let host = UIHostingController(rootView: ToastBar(message: nil))
+        host.view.backgroundColor = .clear
+
+        let win = UIWindow(windowScene: scene)
+        win.rootViewController = host
+        win.windowLevel = .alert + 1
+        win.backgroundColor = .clear
+        win.isUserInteractionEnabled = false
+        win.isHidden = false
+        window = win
+        return win
+    }
+
+    private func present(_ message: ToastMessage) {
+        guard let win = ensureWindow(),
+              let host = win.rootViewController as? UIHostingController<ToastBar> else { return }
+        host.rootView = ToastBar(message: message)
+        win.isHidden = false
+        host.view.alpha = 0
+        host.view.transform = CGAffineTransform(translationX: 0, y: 12)
+        UIView.animate(withDuration: 0.24, delay: 0,
+                       usingSpringWithDamping: 0.86, initialSpringVelocity: 0.4) {
+            host.view.alpha = 1
+            host.view.transform = .identity
+        }
+    }
+
+    private func dismiss() {
+        guard let win = window, let host = win.rootViewController else { return }
+        UIView.animate(withDuration: 0.2, animations: {
+            host.view.alpha = 0
+            host.view.transform = CGAffineTransform(translationX: 0, y: 8)
+        }, completion: { _ in
+            host.rootView = ToastBar(message: nil)
+            win.isHidden = true
+        })
     }
 }
 
-/// 真正订阅 ToastCenter 的宿主视图。
-/// 注意：不能把 @ObservedObject 直接写在 ViewModifier 上——它不是 View，
-/// 不会进入视图图里，@Published 变化收不到，这就是之前 toast 一直不出现的原因。
-private struct ToastHost: View {
-    @StateObject private var center = ToastCenter.shared
+/// 浮条本身：底部一条，不接收点击。
+struct ToastBar: View {
+    let message: ToastMessage?
 
     var body: some View {
         VStack {
             Spacer(minLength: 0)
-            if let toast = center.current {
+            if let message {
                 HStack(spacing: Theme.s2) {
-                    Image(systemName: symbol(for: toast.kind))
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(accent(for: toast.kind))
-                    Text(toast.text)
+                    Image(systemName: symbol(message.kind))
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(accent(message.kind))
+                    Text(message.text)
                         .font(.system(size: 14, weight: .medium))
                         .foregroundStyle(Theme.surface)
-                        .lineLimit(3)
-                        .multilineTextAlignment(.leading)
+                        .lineLimit(2)
                 }
                 .padding(.horizontal, Theme.s4)
                 .padding(.vertical, Theme.s3)
                 .background(Theme.ink.opacity(0.96))
                 .overlay(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(accent(for: toast.kind).opacity(0.75), lineWidth: 1)
+                        .stroke(accent(message.kind).opacity(0.75), lineWidth: 1)
                 )
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .shadow(color: Theme.ink.opacity(0.22), radius: 12, x: 0, y: 6)
                 .padding(.horizontal, Theme.s5)
                 .padding(.bottom, 96)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-                .id(toast.id)
+                .transition(.opacity)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .animation(.spring(response: 0.32, dampingFraction: 0.86), value: center.current)
         .allowsHitTesting(false)
     }
 
-    private func symbol(for kind: ToastMessage.Kind) -> String {
+    private func symbol(_ kind: ToastMessage.Kind) -> String {
         switch kind {
         case .info: return "info.circle.fill"
         case .success: return "checkmark.circle.fill"
@@ -80,19 +115,11 @@ private struct ToastHost: View {
         }
     }
 
-    private func accent(for kind: ToastMessage.Kind) -> Color {
+    private func accent(_ kind: ToastMessage.Kind) -> Color {
         switch kind {
         case .info: return Theme.rule
         case .success: return Theme.jade
         case .error: return Theme.signal
-        }
-    }
-}
-
-extension View {
-    func toastOverlay() -> some View {
-        overlay(alignment: .bottom) {
-            ToastHost()
         }
     }
 }
