@@ -509,6 +509,19 @@ final class MySQLClient {
             throw MySQLClientError.invalidDatabase("只允许 A-Za-z0-9_$ 且长度 1...64")
         }
         close()
+        do {
+            try connectTransport()
+        } catch let error as MySQLClientError {
+            // 1049：库还没建。自动建库后继续，不让用户去服务端手动 CREATE DATABASE。
+            if case .databaseNotExist = error {
+                try bootstrapDatabase()
+                return
+            }
+            throw error
+        }
+    }
+
+    private func connectTransport() throws {
         switch config.normalizedTLS {
         case "disabled":
             try establish(useTLS: false)
@@ -522,6 +535,43 @@ final class MySQLClient {
         default:
             try connectPreferred()
         }
+    }
+
+    /// 库不存在时：先不选库连上，CREATE DATABASE + USE，之后的建表/同步照常。
+    private func bootstrapDatabase() throws {
+        close()
+        let name = config.database
+        let tick = "\u{60}"
+        let createSQL = "CREATE DATABASE IF NOT EXISTS " + tick + name + tick
+            + " DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+        let useSQL = "USE " + tick + name + tick
+        let order: [Bool]
+        switch config.normalizedTLS {
+        case "disabled": order = [false]
+        case "required": order = [true]
+        default: order = [true, false]
+        }
+        var lastError: Error?
+        for useTLS in order {
+            do {
+                try establish(useTLS: useTLS, useDatabase: false)
+                _ = try execute(createSQL)
+                _ = try execute(useSQL)
+                if config.normalizedTLS != "required" {
+                    tlsWarning = useTLS ? nil : MySQLClient.plaintextDowngradeWarning
+                }
+                isOpen = true
+                return
+            } catch {
+                lastError = error
+                close()
+            }
+        }
+        if let lastError {
+            let detail = (lastError as? LocalizedError)?.errorDescription ?? lastError.localizedDescription
+            throw MySQLClientError.unsupported("库 " + name + " 不存在，自动建库失败：" + detail)
+        }
+        throw MySQLClientError.unsupported("库 " + name + " 不存在，自动建库失败")
     }
 
     func close() {
@@ -600,7 +650,7 @@ final class MySQLClient {
         throw lastError
     }
 
-    private func establish(useTLS: Bool) throws {
+    private func establish(useTLS: Bool, useDatabase: Bool = true) throws {
         self.usingTLS = useTLS
         self.sequence = 0
         let conn = try openConnection(useTLS: useTLS)
@@ -610,7 +660,7 @@ final class MySQLClient {
             serverVersion = handshake.serverVersion
             scramble = handshake.scramble
             authPluginName = handshake.authPlugin.isEmpty ? "mysql_native_password" : handshake.authPlugin
-            try sendHandshakeResponse(handshake)
+            try sendHandshakeResponse(handshake, useDatabase: useDatabase)
             try awaitAuthResult()
             isOpen = true
         } catch {
@@ -967,7 +1017,7 @@ final class MySQLClient {
                                authPlugin: plugin)
     }
 
-    private func sendHandshakeResponse(_ handshake: ServerHandshake) throws {
+    private func sendHandshakeResponse(_ handshake: ServerHandshake, useDatabase: Bool = true) throws {
         let desired: UInt32 =
             ClientCapability.longPassword |
             ClientCapability.longFlag |
@@ -977,7 +1027,7 @@ final class MySQLClient {
             ClientCapability.pluginAuth |
             ClientCapability.pluginAuthLenenc |
             ClientCapability.multiResults |
-            ClientCapability.connectWithDB
+            (useDatabase ? ClientCapability.connectWithDB : 0)
         let capabilities = desired & handshake.capabilities
         guard capabilities & ClientCapability.protocol41 != 0 else {
             throw MySQLClientError.unsupported("服务端不支持 CLIENT_PROTOCOL_41（MySQL 版本过旧）")
@@ -996,7 +1046,7 @@ final class MySQLClient {
         // CLIENT_PLUGIN_AUTH_LENENC_CLIENT_DATA：长度编码；认证响应不会超过 250 字节，1 字节即可
         payload.append(UInt8(auth.count & 0xFF))
         payload.append(contentsOf: auth)
-        if capabilities & ClientCapability.connectWithDB != 0 {
+        if useDatabase, capabilities & ClientCapability.connectWithDB != 0 {
             payload.append(contentsOf: Array(config.database.utf8))
             payload.append(0)
         }
