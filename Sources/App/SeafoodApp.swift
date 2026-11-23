@@ -2,10 +2,6 @@ import SwiftUI
 
 @main
 struct SeafoodApp: App {
-    init() {
-        SQLiteStore.shared.seedIfNeeded()
-    }
-
     var body: some Scene {
         WindowGroup {
             RootView()

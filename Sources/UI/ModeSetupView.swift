@@ -318,6 +318,7 @@ struct ModeSetupView: View {
 
     private func applyLocal() {
         selection = .local
+        SQLiteStore.shared.seedIfNeeded()   // 只给本地版灌演示数据；远程版空库开始
         sync.setMode(.local)
         Haptic.success()
         onClose()

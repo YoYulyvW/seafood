@@ -108,6 +108,7 @@ struct OutboundView: View {
         .scrollContentBackground(.hidden)
         .background(PaperBackground())
         .scrollDismissesKeyboard(.interactively)
+        .toastOverlay()
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
@@ -384,6 +385,19 @@ struct OutboundView: View {
         let priceCent = parsePriceCent()
         guard priceCent > 0 else {
             setError("请输入售价（元/斤）")
+            return
+        }
+        let already = items.filter { $0.categoryID == id }.reduce(0) { $0 + $1.centijin }
+        let stock = stockByID[id] ?? 0
+        if !cat.allowNegative && centijin + already > stock {
+            let left = max(0, stock - already)
+            var message = "超出库存：在库 " + Units.formatJin(stock) + " 斤"
+            if already > 0 {
+                message += "，本单已加 " + Units.formatJin(already) + " 斤，还可出 " + Units.formatJin(left) + " 斤"
+            } else {
+                message += "，最多出 " + Units.formatJin(left) + " 斤"
+            }
+            setError(message)
             return
         }
         let item = PendingItem(categoryID: id, categoryName: cat.name, centijin: centijin, unitPriceCent: priceCent)

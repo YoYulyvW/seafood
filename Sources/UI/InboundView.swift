@@ -70,6 +70,7 @@ struct InboundView: View {
             .padding(.bottom, Theme.s6)
         }
         .scrollDismissesKeyboard(.interactively)
+        .toastOverlay()
         .background(PaperBackground())
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
