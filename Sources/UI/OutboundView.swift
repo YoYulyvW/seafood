@@ -3,7 +3,12 @@ import SwiftUI
 /// 出库页：选品类 → 重量 → 售价 → 加入本单（可滑动删除）→ 填客户 → 提交。
 struct OutboundView: View {
     /// 作为 sheet 弹出时由外部提供 NavigationStack。
-    var embedded: Bool = false
+    var embedded: Bool
+
+    /// 显式 init：其余存储属性都有默认值，只有 embedded 需要外部传入。
+    init(embedded: Bool = false) {
+        self.embedded = embedded
+    }
 
     @State private var categories: [Category] = []
     @State private var selectedID: String?
@@ -105,7 +110,7 @@ struct OutboundView: View {
                 Button("完成") { focus = nil }
             }
         }
-        .task { loadCategories() }
+        .onAppear { loadCategories() }
         .sheet(isPresented: $showResult) {
             if let result {
                 OutboundResultSheet(result: result) {
@@ -390,7 +395,9 @@ struct OutboundView: View {
             priceText = ""
             Haptic.success()
             showResult = true
-            SyncEngine.shared.autoSyncAfterWrite()
+            Task { @MainActor in
+                SyncEngine.shared.autoSyncAfterWrite()
+            }
         } catch {
             setError(uiErrorText(error))
         }

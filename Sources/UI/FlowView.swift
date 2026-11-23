@@ -90,7 +90,7 @@ struct FlowView: View {
             .navigationTitle("流水")
             .navigationBarTitleDisplayMode(.inline)
             .refreshable {
-                load()
+                await MainActor.run { load() }
                 try? await Task.sleep(nanoseconds: 200_000_000)
             }
             .onAppear { load() }

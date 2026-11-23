@@ -1,6 +1,13 @@
 import SwiftUI
 
+/// TLS 三档，值直接对应 MySQLConfig.tls 的字符串。
+private struct TLSOption: Identifiable {
+    let id: String
+    let label: String
+}
+
 /// 设置页：操作员、远程 MySQL 同步、检查更新、数据维护、关于。
+@MainActor
 struct SettingsView: View {
     @EnvironmentObject private var sync: SyncEngine
     @EnvironmentObject private var updater: UpdateChecker
@@ -26,10 +33,10 @@ struct SettingsView: View {
     @State private var updateError: String?
     @State private var localIPA: URL?
 
-    private static let tlsOptions: [(String, String)] = [
-        ("preferred", "首选"),
-        ("required", "强制"),
-        ("disabled", "关闭")
+    private static let tlsOptions: [TLSOption] = [
+        TLSOption(id: "preferred", label: "首选"),
+        TLSOption(id: "required", label: "强制"),
+        TLSOption(id: "disabled", label: "关闭")
     ]
 
     var body: some View {
@@ -143,8 +150,8 @@ struct SettingsView: View {
                 .listRowBackground(Theme.surface)
 
                 Picker("TLS", selection: $tls) {
-                    ForEach(Self.tlsOptions, id: \.0) { option in
-                        Text(option.1).tag(option.0)
+                    ForEach(Self.tlsOptions) { option in
+                        Text(option.label).tag(option.id)
                     }
                 }
                 .listRowBackground(Theme.surface)
@@ -250,7 +257,7 @@ struct SettingsView: View {
         case .success(let date):
             KVLine(title: "同步状态", value: "成功 · " + Fmt.dayTime.string(from: date), valueColor: Theme.jade)
         case .failed(let message):
-            ErrorLine(text: "同步失败：" + message)
+            ErrorLine(text: message)
         }
     }
 

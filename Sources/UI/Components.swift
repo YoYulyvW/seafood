@@ -1,7 +1,7 @@
 import SwiftUI
 import UIKit
 
-// MARK: - 触感反馈（iOS 16 没有 sensoryFeedback，用 UIKit 包一层）
+// MARK: - 触感反馈（iOS 16 没有 SwiftUI 原生触感修饰符，用 UIKit 包一层）
 
 enum Haptic {
     static func tap() {
@@ -357,21 +357,5 @@ struct ProgressTrack: View {
             }
         }
         .frame(height: 6)
-    }
-}
-
-/// 页面内的小节标题（列表之外用）。
-struct SectionLabel: View {
-    let text: String
-
-    var body: some View {
-        HStack(spacing: Theme.s2) {
-            Text(text)
-                .font(Theme.label())
-                .tracking(1.5)
-                .foregroundStyle(Theme.ink3)
-            RuleDivider()
-        }
-        .padding(.top, Theme.s1)
     }
 }

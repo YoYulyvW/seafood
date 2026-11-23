@@ -90,10 +90,10 @@ struct StockView: View {
             .navigationBarTitleDisplayMode(.inline)
             .searchable(text: $search, placement: .navigationBarDrawer(displayMode: .always), prompt: "搜索品类")
             .refreshable {
-                reload()
+                await MainActor.run { reload() }
                 try? await Task.sleep(nanoseconds: 220_000_000)
             }
-            .task { reload() }
+            .onAppear { reload() }
             .sheet(isPresented: $showInbound) {
                 NavigationStack {
                     InboundView(embedded: true)
@@ -157,7 +157,7 @@ struct StockView: View {
                         .padding(.top, 4)
                 }
 
-                RuleDivider()
+                DottedRule()
 
                 HStack(alignment: .top, spacing: Theme.s5) {
                     DeltaBlock(title: "今日入",
@@ -275,7 +275,7 @@ struct StockView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.vertical, 6)
             }
-            ForEach(Array(batches.enumerated()), id: \.element.id) { index, batch in
+            ForEach(batches) { batch in
                 HStack(spacing: 8) {
                     Text(batch.batchNo)
                         .font(Theme.number(10, weight: .regular))
@@ -294,7 +294,7 @@ struct StockView: View {
                         .frame(width: 72, alignment: .trailing)
                 }
                 .padding(.vertical, 7)
-                if index < batches.count - 1 {
+                if batch.id != batches.last?.id {
                     RuleDivider()
                 }
             }

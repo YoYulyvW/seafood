@@ -3,7 +3,12 @@ import SwiftUI
 /// 入库页：选品类（或新建）→ 重量（斤/公斤）→ 单价 → 供应商/产地/备注 → 提交。
 struct InboundView: View {
     /// 作为 sheet 弹出时由外部提供 NavigationStack。
-    var embedded: Bool = false
+    var embedded: Bool
+
+    /// 显式 init：其余存储属性都有默认值，只有 embedded 需要外部传入。
+    init(embedded: Bool = false) {
+        self.embedded = embedded
+    }
 
     @State private var categories: [Category] = []
     @State private var selectedID: String?
@@ -70,7 +75,7 @@ struct InboundView: View {
                 Button("完成") { focus = nil }
             }
         }
-        .task { loadCategories() }
+        .onAppear { loadCategories() }
     }
 
     // MARK: - 品类
@@ -355,7 +360,9 @@ struct InboundView: View {
                 newMode = false
                 newName = ""
             }
-            SyncEngine.shared.autoSyncAfterWrite()
+            Task { @MainActor in
+                SyncEngine.shared.autoSyncAfterWrite()
+            }
         } catch {
             setError(uiErrorText(error))
         }
