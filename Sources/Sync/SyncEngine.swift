@@ -620,7 +620,7 @@ final class SyncEngine: ObservableObject {
 
     func syncNow() async throws -> SyncReport {
         // local 模式直接返回空报告：不报错、不动 state、不联网
-        guard isRemoteMode else {
+        guard isConfigured else {
             return SyncReport(pushed: 0, pulled: 0, at: Date())
         }
         guard let config = config else {
@@ -687,7 +687,7 @@ final class SyncEngine: ObservableObject {
     // MARK: 远程全量覆盖本地
 
     func pullReplace() async throws -> SyncReport {
-        guard isRemoteMode else {
+        guard isConfigured else {
             return SyncReport(pushed: 0, pulled: 0, at: Date())
         }
         guard let config = config else {
@@ -734,7 +734,7 @@ final class SyncEngine: ObservableObject {
     // MARK: 写后自动同步（2 秒防抖，fire-and-forget）
 
     func autoSyncAfterWrite() {
-        guard isRemoteMode, isConfigured else { return }
+        guard isConfigured else { return }
         debounce?.cancel()
         let item = DispatchWorkItem { [weak self] in
             guard let self else { return }
@@ -749,7 +749,7 @@ final class SyncEngine: ObservableObject {
 
     /// 启动时同步（RootView 调）：只有 remote 模式且已配置才跑，失败不抛（原因已在 state 里）。
     func syncOnLaunch() async {
-        guard isRemoteMode, isConfigured else { return }
+        guard isConfigured else { return }
         _ = try? await syncNow()
     }
 

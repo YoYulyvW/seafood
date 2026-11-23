@@ -147,6 +147,11 @@ final class SQLiteStore {
         );
         CREATE INDEX IF NOT EXISTS idx_mov_ts ON movement(ts);
         CREATE INDEX IF NOT EXISTS idx_mov_cat ON movement(category_id, ts);
+        CREATE TABLE IF NOT EXISTS demo_mark (
+            kind TEXT NOT NULL,
+            id TEXT NOT NULL,
+            PRIMARY KEY(kind, id)
+        );
         CREATE TABLE IF NOT EXISTS party_history (
             kind TEXT NOT NULL,
             name TEXT NOT NULL,
@@ -737,12 +742,87 @@ final class SQLiteStore {
         setSetting("init_done", "1")
     }
 
-    /// 设置页「重新灌演示数据」用：清空后强制再灌一次。
+    /// 关于页双击「数据存储」用：写入一份演示数据，并把写入的行记进 demo_mark，
+    /// 之后再双击可以只删这些行，不会碰到用户自己录的数据。
     func seedDemoNow() {
-        resetAll()
+        let catBefore = Set(allCategories().map { $0.id })
+        let batchBefore = Set(allBatches().map { $0.id })
+        let moveBefore = Set(allMovements().map { $0.id })
         seedDemoData()
+        for row in allCategories() where !catBefore.contains(row.id) { markDemo("category", row.id) }
+        for row in allBatches() where !batchBefore.contains(row.id) { markDemo("batch", row.id) }
+        for row in allMovements() where !moveBefore.contains(row.id) { markDemo("movement", row.id) }
         setSetting("seeded", "1")
         setSetting("init_done", "1")
+    }
+
+    func hasDemoData() -> Bool {
+        var count = 0
+        rows("SELECT COUNT(*) FROM demo_mark", []) { count = Int(int($0, 0)) }
+        return count > 0
+    }
+
+    private func markDemo(_ kind: String, _ id: String) {
+        try? run("INSERT OR IGNORE INTO demo_mark(kind, id) VALUES (?, ?)", [.text(kind), .text(id)])
+    }
+
+    /// 只删演示数据（按 demo_mark 记录的行），用户手工录入的品类/流水一条不动。
+    func clearDemoData() {
+        func ids(_ kind: String) -> [String] {
+            var out: [String] = []
+            rows("SELECT id FROM demo_mark WHERE kind = ?", [.text(kind)]) { out.append(text($0, 0)) }
+            return out
+        }
+        try? run("BEGIN IMMEDIATE")
+        for id in ids("movement") { try? run("DELETE FROM movement WHERE id = ?", [.text(id)]) }
+        for id in ids("batch") { try? run("DELETE FROM batch WHERE id = ?", [.text(id)]) }
+        for id in ids("category") { try? run("DELETE FROM category WHERE id = ?", [.text(id)]) }
+        try? run("DELETE FROM demo_mark")
+        try? run("COMMIT")
+        setSetting("seeded", "0")
+    }
+
+    // MARK: - 备份导出 / 导入
+
+    struct BackupFile: Codable {
+        var format: String
+        var exportedAt: String
+        var categories: [Category]
+        var batches: [Batch]
+        var movements: [Movement]
+        var parties: [[String: String]]
+    }
+
+    func exportBackup() throws -> Data {
+        var parties: [[String: String]] = []
+        rows("SELECT kind, name FROM party_history ORDER BY used_at DESC", []) { st in
+            parties.append(["kind": text(st, 0), "name": text(st, 1)])
+        }
+        let file = BackupFile(format: "seafood-backup-1",
+                              exportedAt: ISO8601DateFormatter().string(from: Date()),
+                              categories: allCategories(),
+                              batches: allBatches(),
+                              movements: allMovements(),
+                              parties: parties)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return try encoder.encode(file)
+    }
+
+    func importBackup(_ data: Data) throws {
+        let decoded = try JSONDecoder().decode(BackupFile.self, from: data)
+        guard decoded.format.hasPrefix("seafood-backup") else {
+            throw InventoryError.message("不是本 App 的备份文件")
+        }
+        try replaceAll(categories: decoded.categories, batches: decoded.batches, movements: decoded.movements)
+        try? run("DELETE FROM party_history")
+        for item in decoded.parties {
+            if let kind = item["kind"], let name = item["name"] {
+                addPartyName(kind, name)
+            }
+        }
+        setSetting("init_done", "1")
+        setSetting("seeded", "0")
     }
 
     private func seedDemoData() {

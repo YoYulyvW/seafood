@@ -89,7 +89,6 @@ struct RootView: View {
 
     /// 远程版启动/切回时联网同步一次。syncOnLaunch 内部自己判 remote + 已配置，失败不抛。
     private func autoSyncIfNeeded() {
-        guard appMode == "remote" else { return }
         Task { @MainActor in
             await SyncEngine.shared.syncOnLaunch()
         }

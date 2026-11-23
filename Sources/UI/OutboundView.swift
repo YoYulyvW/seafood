@@ -478,10 +478,8 @@ struct OutboundView: View {
             ToastCenter.shared.show("出库成功 · " + res.docNo, kind: .success)
             showResult = true
             Task { await LowStockNotifier.shared.check() }
-            if appMode == "remote" {
-                Task { @MainActor in
-                    SyncEngine.shared.autoSyncAfterWrite()
-                }
+            Task { @MainActor in
+                SyncEngine.shared.autoSyncAfterWrite()
             }
         } catch {
             setError(uiErrorText(error))

@@ -389,10 +389,8 @@ struct InboundView: View {
                 newMode = false
                 newName = ""
             }
-            if appMode == "remote" {
-                Task { @MainActor in
-                    SyncEngine.shared.autoSyncAfterWrite()
-                }
+            Task { @MainActor in
+                SyncEngine.shared.autoSyncAfterWrite()
             }
         } catch {
             setError(uiErrorText(error))

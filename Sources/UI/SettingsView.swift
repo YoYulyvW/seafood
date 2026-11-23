@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// TLS 三档，值直接对应 MySQLConfig.tls 的字符串。
 private struct TLSOption: Identifiable {
@@ -32,6 +33,9 @@ struct SettingsView: View {
     @AppStorage("lowstock_notify") private var lowStockNotify = true
     @AppStorage("show_profit") private var showProfit = true
     @State private var updateError: String? = nil
+    @State private var confirmDemo = false
+    @State private var exportURL: URL?
+    @State private var showImporter = false
     @State private var localIPA: URL? = nil
 
     /// 使用模式：与 RootView 共用同一个 UserDefaults 键。
@@ -57,6 +61,40 @@ struct SettingsView: View {
                 aboutSection
             }
             .listStyle(.insetGrouped)
+            .fileImporter(isPresented: $showImporter,
+                          allowedContentTypes: [.json],
+                          allowsMultipleSelection: false) { result in
+                if case .success(let urls) = result, let url = urls.first {
+                    importBackup(from: url)
+                } else if case .failure(let error) = result {
+                    dataMessage = "选择文件失败：" + error.localizedDescription
+                }
+            }
+            .sheet(isPresented: Binding(get: { exportURL != nil },
+                                        set: { if !$0 { exportURL = nil } })) {
+                if let url = exportURL {
+                    ShareSheet(items: [url])
+                }
+            }
+            .alert(SQLiteStore.shared.hasDemoData() ? "清空演示数据？" : "写入演示数据？",
+                   isPresented: $confirmDemo) {
+                Button("取消", role: .cancel) {}
+                Button(SQLiteStore.shared.hasDemoData() ? "清空演示数据" : "写入演示数据",
+                       role: SQLiteStore.shared.hasDemoData() ? .destructive : nil) {
+                    if SQLiteStore.shared.hasDemoData() {
+                        SQLiteStore.shared.clearDemoData()
+                        dataMessage = "演示数据已清空，你手工录入的数据没动"
+                    } else {
+                        SQLiteStore.shared.seedDemoNow()
+                        dataMessage = "已写入演示数据，再双击可清掉"
+                    }
+                    Haptic.success()
+                }
+            } message: {
+                Text(SQLiteStore.shared.hasDemoData()
+                     ? "只删除演示写入的品类与流水，手动录入的数据会保留。"
+                     : "会写入 8 个品类与一批示例流水，只用于试功能。")
+            }
             .scrollContentBackground(.hidden)
             .background(PaperBackground())
             .navigationTitle("设置")
@@ -265,7 +303,7 @@ struct SettingsView: View {
                 .listRowBackground(Theme.surface)
 
             if appMode == "local" {
-                Text("当前是本地版：自动同步已暂停，远程配置保留着。")
+                Text("本地版也会把数据同步到这台 MySQL，当作备份用。")
                     .font(.footnote)
                     .foregroundStyle(Theme.ink3)
                     .listRowBackground(Theme.surface)
@@ -414,9 +452,16 @@ struct SettingsView: View {
             .listRowBackground(Theme.surface)
 
             Button {
-                reseed()
+                exportBackup()
             } label: {
-                Text("重新灌演示数据")
+                Text("导出备份文件")
+            }
+            .listRowBackground(Theme.surface)
+
+            Button {
+                showImporter = true
+            } label: {
+                Text("从备份文件导入")
             }
             .listRowBackground(Theme.surface)
 
@@ -517,8 +562,12 @@ struct SettingsView: View {
                     .listRowBackground(Theme.surface)
             }
 
-            KVLine(title: "数据存储", value: "本地 SQLite", valueColor: Theme.ink3)
+            KVLine(title: "数据存储",
+                   value: SQLiteStore.shared.hasDemoData() ? "本地 SQLite · 含演示数据" : "本地 SQLite",
+                   valueColor: Theme.ink3)
                 .listRowBackground(Theme.surface)
+                .contentShape(Rectangle())
+                .onTapGesture(count: 2) { confirmDemo = true }
         } header: {
             Text("关于")
         } footer: {
@@ -648,8 +697,8 @@ struct SettingsView: View {
     private func runSync() {
         syncError = nil
         syncMessage = nil
-        guard sync.isRemoteMode else {
-            syncMessage = "当前是本地版：不联网同步，切到远程版后可用"
+        guard sync.isConfigured else {
+            syncMessage = "还没配置 MySQL：填好下面连接信息后才能同步"
             return
         }
         guard let config = buildConfig() else {
@@ -674,8 +723,8 @@ struct SettingsView: View {
     private func pullReplace() {
         syncError = nil
         syncMessage = nil
-        guard sync.isRemoteMode else {
-            syncMessage = "当前是本地版：不联网同步，切到远程版后可用"
+        guard sync.isConfigured else {
+            syncMessage = "还没配置 MySQL：填好下面连接信息后才能同步"
             return
         }
         syncWorking = true
@@ -753,9 +802,32 @@ struct SettingsView: View {
         Haptic.warning()
     }
 
-    private func reseed() {
-        SQLiteStore.shared.seedDemoNow()
-        dataMessage = "演示数据已重新生成"
-        Haptic.success()
+    private func exportBackup() {
+        do {
+            let data = try SQLiteStore.shared.exportBackup()
+            let name = "seafood-backup-" + Fmt.dayString(Date()) + ".json"
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent(name)
+            try data.write(to: url, options: .atomic)
+            exportURL = url
+            dataMessage = "已生成备份：" + name
+            Haptic.success()
+        } catch {
+            dataMessage = "导出失败：" + error.localizedDescription
+            Haptic.error()
+        }
+    }
+
+    private func importBackup(from url: URL) {
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        do {
+            let data = try Data(contentsOf: url)
+            try SQLiteStore.shared.importBackup(data)
+            dataMessage = "备份已导入，本地数据已替换"
+            Haptic.success()
+        } catch {
+            dataMessage = "导入失败：" + error.localizedDescription
+            Haptic.error()
+        }
     }
 }
