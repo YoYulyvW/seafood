@@ -10,7 +10,6 @@ private enum ModeSelection: String {
 /// 首次启动 / 切换模式的全屏选择：本地版 或 远程版。
 @MainActor
 struct ModeSetupView: View {
-    @Binding var appMode: String
     /// 从设置页弹出时显示「取消」，首次启动时不显示。
     var showsClose: Bool
     var onClose: () -> Void
@@ -28,8 +27,7 @@ struct ModeSetupView: View {
     @State private var testResult: String? = nil
     @State private var errorText: String? = nil
 
-    init(appMode: Binding<String>, showsClose: Bool = false, onClose: @escaping () -> Void = {}) {
-        self._appMode = appMode
+    init(showsClose: Bool = false, onClose: @escaping () -> Void = {}) {
         self.showsClose = showsClose
         self.onClose = onClose
     }
@@ -231,6 +229,17 @@ struct ModeSetupView: View {
                     .foregroundStyle(Theme.jade)
                 }
 
+                if let warning = sync.tlsWarning {
+                    HStack(alignment: .top, spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle")
+                            .font(.caption)
+                        Text(warning)
+                            .font(.footnote)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .foregroundStyle(Theme.signal)
+                }
+
                 if let errorText {
                     ErrorLine(text: errorText)
                 }
@@ -250,7 +259,7 @@ struct ModeSetupView: View {
     // MARK: - 动作
 
     private func prefill() {
-        selection = appMode == "remote" ? .remote : .local
+        selection = sync.mode == .remote ? .remote : .local
         guard let config = sync.config else { return }
         host = config.host
         port = String(config.port)
@@ -309,7 +318,7 @@ struct ModeSetupView: View {
 
     private func applyLocal() {
         selection = .local
-        appMode = "local"
+        sync.setMode(.local)
         Haptic.success()
         onClose()
     }
@@ -322,8 +331,8 @@ struct ModeSetupView: View {
             return
         }
         sync.saveConfig(config)
+        sync.setMode(.remote)
         selection = .remote
-        appMode = "remote"
         Haptic.success()
         onClose()
     }

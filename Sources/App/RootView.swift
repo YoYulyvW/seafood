@@ -12,7 +12,7 @@ struct RootView: View {
     var body: some View {
         ZStack {
             if appMode.isEmpty {
-                ModeSetupView(appMode: $appMode)
+                ModeSetupView()
                     .transition(.opacity)
             } else {
                 tabs
@@ -45,12 +45,11 @@ struct RootView: View {
         .background(PaperBackground())
     }
 
-    /// 远程版启动/切回时联网同步一次。失败只体现为 SyncEngine.state = .failed，不弹窗。
+    /// 远程版启动/切回时联网同步一次。syncOnLaunch 内部自己判 remote + 已配置，失败不抛。
     private func autoSyncIfNeeded() {
         guard appMode == "remote" else { return }
         Task { @MainActor in
-            guard SyncEngine.shared.isConfigured else { return }
-            _ = try? await SyncEngine.shared.syncNow()
+            await SyncEngine.shared.syncOnLaunch()
         }
     }
 }

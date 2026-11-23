@@ -28,7 +28,7 @@ struct InboundView: View {
     @AppStorage("app_mode") private var appMode = ""
 
     @State private var submitting = false
-    @FocusState private var focus: Field? = nil
+    @FocusState private var focus: Field?
     private enum Field: Hashable {
         case weight
         case cost

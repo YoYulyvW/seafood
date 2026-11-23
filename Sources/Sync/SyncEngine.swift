@@ -495,6 +495,8 @@ final class SyncEngine: ObservableObject {
     @Published var tlsWarning: String?
 
     private static let lastSyncMirrorKey = "mysql.lastSyncAt"
+    /// 与 UI 的 @AppStorage 对齐的 key
+    private static let modeDefaultsKey = "app_mode"
 
     private let store: SQLiteStore
     private let workQueue = DispatchQueue(label: "com.yoyulyvw.seafood.sync", qos: .utility)
@@ -544,9 +546,16 @@ final class SyncEngine: ObservableObject {
 
     // MARK: 模式开关（local / remote）
 
-    /// 当前模式，来自 setting("app_mode")；未设置时按 local 处理（默认不联网）。
+    /// 当前模式。UI 侧用的是 @AppStorage("app_mode")（写 UserDefaults），
+    /// 旧代码/AppMode.save 写的是 SQLite 的 setting("app_mode")，这里两边都认，避免两边打架：
+    /// UserDefaults 有值优先（UI 是唯一操作入口），否则看 SQLite，都没有按 local（默认不联网）。
     var mode: AppMode {
-        SyncEngine.mode(from: store.setting("app_mode"))
+        let defaultsValue = (UserDefaults.standard.string(forKey: SyncEngine.modeDefaultsKey) ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if !defaultsValue.isEmpty {
+            return SyncEngine.mode(from: defaultsValue)
+        }
+        return SyncEngine.mode(from: store.setting("app_mode"))
     }
 
     var isRemoteMode: Bool {
@@ -558,8 +567,11 @@ final class SyncEngine: ObservableObject {
         }
     }
 
+    /// 两个位置都写：AppStorage 读 UserDefaults，AppMode.selected / 旧的 setting 读 SQLite。
     func setMode(_ mode: AppMode) {
-        store.setSetting("app_mode", SyncEngine.rawValue(of: mode))
+        let value = SyncEngine.rawValue(of: mode)
+        store.setSetting("app_mode", value)
+        UserDefaults.standard.set(value, forKey: SyncEngine.modeDefaultsKey)
     }
 
     private static func rawValue(of mode: AppMode) -> String {
@@ -758,7 +770,7 @@ final class SyncEngine: ObservableObject {
         if !password.isEmpty {
             output = output.replacingOccurrences(of: password, with: "****")
         }
-        let pattern = "([A-Za-z]+://[^:/@\s]+:)[^@\s]*@"
+        let pattern = "([A-Za-z]+://[^:/@\\s]+:)[^@\\s]*@"
         if let regex = try? NSRegularExpression(pattern: pattern, options: []) {
             let range = NSRange(output.startIndex..<output.endIndex, in: output)
             output = regex.stringByReplacingMatches(in: output, options: [], range: range, withTemplate: "$1****@")

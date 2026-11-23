@@ -72,7 +72,7 @@ struct SettingsView: View {
                 Text("本地品类、批次、流水会被远程整库替换。如果本地还有没推上去的记录，先点“立即同步”。")
             }
             .fullScreenCover(isPresented: $showModeSetup) {
-                ModeSetupView(appMode: $appMode, showsClose: true) {
+                ModeSetupView(showsClose: true) {
                     showModeSetup = false
                 }
             }
@@ -268,6 +268,22 @@ struct SettingsView: View {
                     .listRowBackground(Theme.surface)
             }
 
+            if let warning = sync.tlsWarning {
+                HStack(alignment: .top, spacing: Theme.s2) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.caption)
+                    Text(warning)
+                        .font(.footnote)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: Theme.s2)
+                    Button("知道了") { sync.tlsWarning = nil }
+                        .font(.caption)
+                        .foregroundStyle(Theme.ink3)
+                }
+                .foregroundStyle(Theme.signal)
+                .listRowBackground(Theme.surface)
+            }
+
             if let syncMessage {
                 Text(syncMessage)
                     .font(.footnote)
@@ -322,7 +338,7 @@ struct SettingsView: View {
         } header: {
             Text("远程 MySQL 同步")
         } footer: {
-            Text("写入本地后 2 秒内自动推送。远程覆盖会用服务端整库替换本地。")
+            Text("写入本地后 2 秒内自动推送。远程覆盖会用服务端整库替换本地。密码只存 Keychain，数据库里不留明文。")
         }
     }
 
@@ -497,13 +513,13 @@ struct SettingsView: View {
     }
 
     private func switchToLocal() {
-        appMode = "local"
+        sync.setMode(.local)
         Haptic.tap()
     }
 
     private func switchToRemote() {
         if sync.isConfigured {
-            appMode = "remote"
+            sync.setMode(.remote)
             Haptic.success()
         } else {
             showModeSetup = true
@@ -610,6 +626,10 @@ struct SettingsView: View {
     private func runSync() {
         syncError = nil
         syncMessage = nil
+        guard sync.isRemoteMode else {
+            syncMessage = "当前是本地版：不联网同步，切到远程版后可用"
+            return
+        }
         guard let config = buildConfig() else {
             syncError = "请先填写连接信息"
             return
@@ -632,6 +652,10 @@ struct SettingsView: View {
     private func pullReplace() {
         syncError = nil
         syncMessage = nil
+        guard sync.isRemoteMode else {
+            syncMessage = "当前是本地版：不联网同步，切到远程版后可用"
+            return
+        }
         syncWorking = true
         Task {
             do {
