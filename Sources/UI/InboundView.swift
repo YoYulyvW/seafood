@@ -355,6 +355,7 @@ struct InboundView: View {
             weightText = ""
             errorText = nil
             Haptic.success()
+            ToastCenter.shared.show("入库成功 · " + res.docNo, kind: .success)
             loadCategories()
             if newMode,
                let created = categories.first(where: { $0.name == trimmedName }) {

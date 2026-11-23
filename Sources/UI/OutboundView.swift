@@ -436,6 +436,7 @@ struct OutboundView: View {
             weightText = ""
             priceText = ""
             Haptic.success()
+            ToastCenter.shared.show("出库成功 · " + res.docNo, kind: .success)
             showResult = true
             Task { await LowStockNotifier.shared.check() }
             if appMode == "remote" {

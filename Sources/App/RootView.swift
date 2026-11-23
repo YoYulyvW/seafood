@@ -23,6 +23,7 @@ struct RootView: View {
             }
         }
         .animation(.easeInOut(duration: 0.26), value: appMode)
+        .toastOverlay()
         .onAppear {
             autoSyncIfNeeded()
             checkUpdateOnForeground()
