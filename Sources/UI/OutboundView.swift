@@ -490,6 +490,7 @@ struct OutboundView: View {
 
     private func setError(_ text: String) {
         withAnimation(.easeOut(duration: 0.16)) { errorText = text }
+        ToastCenter.shared.show(text, kind: .error)
         Haptic.warning()
     }
 }
