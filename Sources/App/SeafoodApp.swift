@@ -8,7 +8,6 @@ struct SeafoodApp: App {
                 .environmentObject(SyncEngine.shared)
                 .environmentObject(UpdateChecker.shared)
                 .tint(Theme.signal)
-                .preferredColorScheme(.light)
         }
     }
 }

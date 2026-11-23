@@ -1,17 +1,25 @@
 import SwiftUI
+import UIKit
 
 /// 设计基调：水产批发市场的过磅单 —— 纸色底、墨线、等宽数字、朱红印章。
 enum Theme {
-    static let paper = Color(hex: 0xF1EDE1)
-    static let surface = Color(hex: 0xFAF7EF)
-    static let ink = Color(hex: 0x16191B)
-    static let ink2 = Color(hex: 0x474C4F)
-    static let ink3 = Color(hex: 0x767B78)
-    static let rule = Color(hex: 0xC7C0AC)
-    static let ruleSoft = Color(hex: 0xDBD4C1)
-    static let signal = Color(hex: 0xBF3A28)
-    static let jade = Color(hex: 0x1D5C4E)
-    static let ice = Color(hex: 0x8FAEB6)
+    // 深色模式跟随系统：同一套语义色，亮/暗各给一组值。
+    static let paper = dyn(0xF1EDE1, 0x111314)
+    static let surface = dyn(0xFAF7EF, 0x1B1E1F)
+    static let ink = dyn(0x16191B, 0xECE9E1)
+    static let ink2 = dyn(0x474C4F, 0xAAB0AE)
+    static let ink3 = dyn(0x767B78, 0x83898A)
+    static let rule = dyn(0xC7C0AC, 0x3C4140)
+    static let ruleSoft = dyn(0xDBD4C1, 0x2C3131)
+    static let signal = dyn(0xBF3A28, 0xE25843)
+    static let jade = dyn(0x1D5C4E, 0x63B79B)
+    static let ice = dyn(0x8FAEB6, 0x8FB6BE)
+
+    private static func dyn(_ light: UInt32, _ dark: UInt32) -> Color {
+        Color(UIColor { traits in
+            UIColor(hexValue: traits.userInterfaceStyle == .dark ? dark : light)
+        })
+    }
 
     static let radius: CGFloat = 10
     static let cardRadius: CGFloat = 14
@@ -32,6 +40,17 @@ enum Theme {
     }
 
     static func label() -> Font { .system(size: 12, weight: .medium) }
+}
+
+extension UIColor {
+    convenience init(hexValue: UInt32) {
+        self.init(
+            red: CGFloat((hexValue >> 16) & 0xFF) / 255,
+            green: CGFloat((hexValue >> 8) & 0xFF) / 255,
+            blue: CGFloat(hexValue & 0xFF) / 255,
+            alpha: 1
+        )
+    }
 }
 
 extension Color {
