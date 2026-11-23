@@ -11,6 +11,8 @@ struct OutboundView: View {
     }
 
     @State private var categories: [Category] = []
+    @State private var stockByID: [String: Int] = [:]
+    @State private var batchCountByID: [String: Int] = [:]
     @State private var selectedID: String? = nil
     @State private var weightText = ""
     @State private var unit: WeightUnit = .jin
@@ -168,6 +170,25 @@ struct OutboundView: View {
                     .inkField()
                 }
 
+                if let stock = currentStockCentijin {
+                    HStack(spacing: Theme.s2) {
+                        Text("在库 " + Units.formatJin(stock) + " 斤")
+                            .font(Theme.number(13))
+                            .foregroundStyle(isOverStock ? Theme.signal : Theme.ink2)
+                        if let count = batchCountByID[selectedID ?? ""], count > 0 {
+                            Text("· " + String(count) + " 批")
+                                .font(.caption)
+                                .foregroundStyle(Theme.ink3)
+                        }
+                        if isOverStock {
+                            Text("超出库存")
+                                .font(.caption)
+                                .foregroundStyle(Theme.signal)
+                        }
+                        Spacer()
+                    }
+                }
+
                 HStack(alignment: .top, spacing: Theme.s3) {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("重量")
@@ -221,11 +242,27 @@ struct OutboundView: View {
         }
     }
 
+    private var currentStockCentijin: Int? {
+        guard let id = selectedID else { return nil }
+        return stockByID[id] ?? 0
+    }
+
+    private var isOverStock: Bool {
+        guard let stock = currentStockCentijin,
+              let centijin = unit.centijin(from: weightText) else { return false }
+        return centijin > stock
+    }
+
     private var convertedHint: String {
         guard let centijin = unit.centijin(from: weightText) else {
-            return "1 公斤 = 2 斤"
+            let stock = currentStockCentijin.map { Units.formatJin($0) } ?? "—"
+            return "1 公斤 = 2 斤 · 在库 " + stock + " 斤"
         }
-        return unit.hint(centijin)
+        let base = unit.hint(centijin)
+        if let stock = currentStockCentijin {
+            return base + " · 在库 " + Units.formatJin(stock) + " 斤"
+        }
+        return base
     }
 
     private var amountText: String {
@@ -322,6 +359,9 @@ struct OutboundView: View {
 
     private func loadCategories() {
         categories = SQLiteStore.shared.categories()
+        let stock = SQLiteStore.shared.stock()
+        stockByID = Dictionary(uniqueKeysWithValues: stock.map { ($0.id, $0.qtyCentijin) })
+        batchCountByID = Dictionary(uniqueKeysWithValues: stock.map { ($0.id, $0.batchCount) })
         if selectedID == nil, let first = categories.first {
             selectedID = first.id
         }
