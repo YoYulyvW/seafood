@@ -16,8 +16,8 @@ IPA_NAME=$(basename "$IPA_URL")
 
 mkdir -p "$SHARE"
 echo "==> 下载 $IPA_NAME"
-curl -fL --retry 3 -o "$SHARE/$IPA_NAME" "$IPA_URL"
-curl -fL --retry 3 -o /tmp/manifest.json "$MANIFEST_URL"
+curl -fL --retry 5 --retry-all-errors --retry-delay 2 -o "$SHARE/$IPA_NAME" "$IPA_URL"
+curl -fL --retry 5 --retry-all-errors --retry-delay 2 -o /tmp/manifest.json "$MANIFEST_URL"
 
 echo "==> 重写 manifest 指向本机"
 python3 - "$SHARE/$IPA_NAME" "$IPA_NAME" <<'PY'

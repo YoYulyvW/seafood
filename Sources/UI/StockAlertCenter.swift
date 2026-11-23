@@ -112,8 +112,7 @@ struct StockAlertBubble: View {
     @Binding var expanded: Bool
     @AppStorage("alert_bubble_offset_x") private var savedX = 0.0
     @AppStorage("alert_bubble_offset_y") private var savedY = 0.0
-    @State private var dragTranslation: CGSize = .zero
-    @State private var dragging = false
+    @GestureState private var dragOffset: CGSize = .zero
 
     var body: some View {
         Group {
@@ -127,25 +126,26 @@ struct StockAlertBubble: View {
                 }
             }
         }
-        .offset(x: savedX + dragTranslation.width, y: savedY + dragTranslation.height)
-        .gesture(
-            DragGesture(minimumDistance: 6)
-                .onChanged { value in
-                    dragging = true
-                    dragTranslation = value.translation
+        // 展开/数量变化的动画只作用在内容上，不要和拖拽的 offset 抢动画
+        .animation(.spring(response: 0.32, dampingFraction: 0.86), value: expanded)
+        .animation(.spring(response: 0.32, dampingFraction: 0.86), value: center.lowItems.count)
+        // 拖拽用 GestureState：手指移动的每一帧直接改 offset，没有动画插值，所以跟手
+        .offset(x: savedX + dragOffset.width, y: savedY + dragOffset.height)
+        .animation(nil, value: dragOffset)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 2)
+                .updating($dragOffset) { value, state, _ in
+                    state = value.translation
                 }
                 .onEnded { value in
-                    savedX += value.translation.width
-                    savedY += value.translation.height
-                    // 限制在屏幕内，避免拖丢
-                    savedX = min(max(savedX, -220), 40)
-                    savedY = min(max(savedY, -520), 40)
-                    dragTranslation = .zero
-                    dragging = false
+                    var nx = savedX + value.translation.width
+                    var ny = savedY + value.translation.height
+                    nx = min(max(nx, -220), 40)
+                    ny = min(max(ny, -520), 40)
+                    savedX = nx
+                    savedY = ny
                 }
         )
-        .animation(dragging ? nil : .spring(response: 0.32, dampingFraction: 0.86), value: expanded)
-        .animation(dragging ? nil : .spring(response: 0.32, dampingFraction: 0.86), value: center.lowItems.count)
     }
 
     private func bubble(_ first: StockRow) -> some View {
