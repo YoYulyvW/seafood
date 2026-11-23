@@ -39,6 +39,8 @@ struct StockView: View {
         let keyword = search.trimmingCharacters(in: .whitespacesAndNewlines)
         return stocks.filter { row in
             if let kind = filter.kind, row.category.storage != kind { return false }
+
+    private var lowCount: Int { filtered.filter { $0.isLow }.count }
             if !keyword.isEmpty, !row.category.name.localizedCaseInsensitiveContains(keyword) { return false }
             return true
         }
@@ -73,7 +75,7 @@ struct StockView: View {
                             .tracking(1.5)
                             .foregroundStyle(Theme.ink3)
                         Spacer()
-                        Text("\(filtered.count) 项")
+                        Text(lowCount > 0 ? "\(filtered.count) 项 · \(lowCount) 个低库存" : "\(filtered.count) 项")
                             .font(Theme.label())
                             .foregroundStyle(Theme.ink3)
                     }

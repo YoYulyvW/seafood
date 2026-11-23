@@ -26,10 +26,14 @@ struct RootView: View {
         .onAppear {
             autoSyncIfNeeded()
             checkUpdateOnForeground()
+            checkLowStock()
         }
         .onChange(of: appMode) { _ in autoSyncIfNeeded() }
         .onChange(of: scenePhase) { phase in
-            if phase == .active { checkUpdateOnForeground() }
+            if phase == .active {
+                checkUpdateOnForeground()
+                checkLowStock()
+            }
         }
         .alert("发现新版本", isPresented: $showUpdateAlert) {
             Button("去更新") { tab = .settings }
@@ -58,6 +62,13 @@ struct RootView: View {
                 .tag(Tab.settings)
         }
         .background(PaperBackground())
+    }
+
+    /// 回到前台检查一次低库存；同一品类每天只推一次。
+    private func checkLowStock() {
+        guard !appMode.isEmpty else { return }
+        guard (UserDefaults.standard.object(forKey: "lowstock_notify") as? Bool ?? true) else { return }
+        Task { await LowStockNotifier.shared.check() }
     }
 
     private var updateAlertMessage: String {

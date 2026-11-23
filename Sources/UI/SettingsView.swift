@@ -29,6 +29,7 @@ struct SettingsView: View {
     @State private var confirmClear = false
     @State private var confirmPull = false
     @State private var dataMessage: String? = nil
+    @AppStorage("lowstock_notify") private var lowStockNotify = true
     @State private var updateError: String? = nil
     @State private var localIPA: URL? = nil
 
@@ -49,6 +50,7 @@ struct SettingsView: View {
                 modeSection
                 operatorSection
                 syncSection
+                alertSection
                 dataSection
                 aboutSection
             }
@@ -362,6 +364,38 @@ struct SettingsView: View {
             KVLine(title: "同步状态", value: "成功 · " + Fmt.dayTime.string(from: date), valueColor: Theme.jade)
         case .failed(let message):
             ErrorLine(text: message)
+        }
+    }
+
+    // MARK: - 库存预警
+
+    @ViewBuilder
+    private var alertSection: some View {
+        Section {
+            NavigationLink {
+                CategoryAlertsView()
+            } label: {
+                HStack {
+                    Text("品类与预警")
+                    Spacer()
+                    Text("预警线 / 存储方式")
+                        .font(.footnote)
+                        .foregroundStyle(Theme.ink3)
+                }
+            }
+            .listRowBackground(Theme.surface)
+
+            Toggle("低库存通知", isOn: $lowStockNotify)
+                .tint(Theme.jade)
+                .listRowBackground(Theme.surface)
+                .onChange(of: lowStockNotify) { enabled in
+                    guard enabled else { return }
+                    Task { _ = await LowStockNotifier.shared.requestAuthorization() }
+                }
+        } header: {
+            Text("库存")
+        } footer: {
+            Text("低于预警线的品类在库存页标红；同一品类每天最多提醒一次。")
         }
     }
 

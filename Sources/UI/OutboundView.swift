@@ -397,6 +397,7 @@ struct OutboundView: View {
             priceText = ""
             Haptic.success()
             showResult = true
+            Task { await LowStockNotifier.shared.check() }
             if appMode == "remote" {
                 Task { @MainActor in
                     SyncEngine.shared.autoSyncAfterWrite()
