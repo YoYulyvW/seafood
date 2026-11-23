@@ -63,16 +63,17 @@ struct Batch: Identifiable, Codable, Equatable {
 // MARK: - 流水
 
 enum MovementKind: String, Codable, CaseIterable {
-    case in, out, loss, count
+    case inbound = "in"
+    case out, loss, count
     var label: String {
         switch self {
-        case .in: return "入库"
+        case .inbound: return "入库"
         case .out: return "出库"
         case .loss: return "损耗"
         case .count: return "盘点"
         }
     }
-    var isPositive: Bool { self == .in || self == .count }
+    var isPositive: Bool { self == .inbound || self == .count }
 }
 
 struct Movement: Identifiable, Codable, Equatable {

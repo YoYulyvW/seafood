@@ -20,6 +20,23 @@
 //  - 远程游标 = 远程 sf_meta.k='watermark'（毫秒），表示「远程 updated_at ≤ 游标 的行已经拉过」。
 //  - 远端时钟可能比本机快，所以本地游标会被 min(拉取最大值, 当前毫秒) 夹一次，
 //    保证本机后来的修改一定大于本地游标、能被推出去。
+//  - 密码只存在 Keychain（MySQLConfig.savePassword/loadPassword），setting("mysql_dsn") 里永远没有密码；
+//    state=.failed 的文本、日志、异常全部过 redact() 脱敏，密码替换成 ****。
+//  - 模式开关：只有 AppMode.remote 才会真的联网；local 模式下 syncNow / autoSyncAfterWrite 直接返回，
+//    不报错、不改 state。
+//
+//  多人共用一个库：冲突语义与已知限制（必读）
+//  1. 合并策略是 LWW（last write wins）：同一主键行按 updated_at 大者胜。updated_at 完全相同（同一毫秒）时
+//     本地优先——SQLiteStore.applyRemote 用的是 >= 比较，相等就覆盖远程，等价于本地赢，这里原样保留。
+//  2. 没有向量时钟/版本号，两端时钟偏移直接决定胜者：某台设备系统时间被人为调快，它写的数据会长期压过
+//     其它设备（其它设备 updated_at 更小，推上去也被 REPLACE 掉）。部署时各设备务必开自动对时；
+//     现场出现「改了没生效、回退」先查设备时间。
+//  3. 水位竞态：pull 用的是「本轮开始前的远程游标」。别的设备在本轮 pull 之后、写游标之前提交的行，
+//     如果 updated_at 小于本轮写入的新游标，下一轮不会拉到，要等该行再次被修改才会同步。
+//     窗口是秒级；SyncSession.watermarkOverlapMs 默认 0（严格游标），需要更强一致性时改成 1000 做 1 秒重叠。
+//  4. 没有物理删除：删除靠 deleted 软删标记 + REPLACE INTO，远程行不会被删掉，只会被标记。
+//  5. 表结构只做 CREATE TABLE IF NOT EXISTS，没有 ALTER 迁移；加字段必须手工在服务端改表。
+//  6. 单机串行：同一台设备同一时刻只跑一个同步（acquire/release 闸门），多设备并发靠 LWW 收敛。
 //
 
 import Foundation
@@ -67,10 +84,15 @@ struct RemoteSnapshot {
 /// 一个同步周期一个实例：open 时建链 + 建表 + 读远程游标，用完 close。
 final class SyncSession {
     private static let rowsPerStatement = 200
+    /// 拉取游标的重叠窗口（毫秒）。0 = 严格游标；1000 = 每次多拉 1 秒，代价是重复行（LWW 幂等）。
+    static let watermarkOverlapMs: Int64 = 0
 
     private let client: MySQLClient
     /// open 时读到的远程游标，pull 用它做增量条件
     let remoteWatermark: Int64
+
+    /// 连接期产生的 TLS 降级警告（preferred 走明文时非空）
+    var tlsWarning: String? { client.tlsWarning }
 
     private init(client: MySQLClient, remoteWatermark: Int64) {
         self.client = client
@@ -201,7 +223,9 @@ final class SyncSession {
         var snapshot = RemoteSnapshot()
         let condition: String
         if let cursor {
-            condition = " WHERE updated_at > " + String(cursor)
+            // 默认严格游标；watermarkOverlapMs 调成 1000 就是 1 秒重叠拉取，给并发写窗口兜底
+            let lower = Swift.max(Int64(0), cursor - SyncSession.watermarkOverlapMs)
+            condition = " WHERE updated_at > " + String(lower)
         } else {
             condition = ""
         }
@@ -260,7 +284,7 @@ final class SyncSession {
             snapshot.movements.append(Movement(
                 id: row.text("id"),
                 ts: row.int64("ts"),
-                kind: MovementKind(rawValue: row.text("kind")) ?? .in,
+                kind: MovementKind(rawValue: row.text("kind")) ?? .inbound,
                 categoryID: row.text("category_id"),
                 batchID: batchID,
                 qtyCentijin: row.int("qty_centijin"),
@@ -467,6 +491,8 @@ final class SyncEngine: ObservableObject {
 
     @Published private(set) var state: SyncState = .idle
     @Published private(set) var lastSync: Date?
+    /// TLS 降级警告（tls=preferred 走了明文时非空）。UI 展示后可以置 nil 关掉。
+    @Published var tlsWarning: String?
 
     private static let lastSyncMirrorKey = "mysql.lastSyncAt"
 
@@ -489,22 +515,65 @@ final class SyncEngine: ObservableObject {
     var config: MySQLConfig? {
         let raw = store.setting("mysql_dsn").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !raw.isEmpty else { return nil }
-        return MySQLConfig.parse(raw)
+        guard let parsed = MySQLConfig.parse(raw) else { return nil }
+        // DSN 里没有密码，密码从 Keychain 补；UI 传进来的 config.password 为空时也走这条
+        return parsed.withKeychainPassword()
     }
 
     var isConfigured: Bool {
         config != nil
     }
 
-    /// 传 nil 表示关闭同步（DSN 写空串）。
+    /// 传 nil 表示关闭同步（DSN 写空串 + 删除该账号的 Keychain 密码）。
     func saveConfig(_ config: MySQLConfig?) {
         if let config {
+            // 密码只进 Keychain；DSN 里不含密码，落到 setting 表
+            MySQLConfig.savePassword(config.password, host: config.host, user: config.user)
             store.setSetting("mysql_dsn", config.dsn)
             MySQLClient.resetTLSProbeCache()
+            tlsWarning = nil
         } else {
+            if let previous = self.config {
+                MySQLConfig.deletePassword(host: previous.host, user: previous.user)
+            }
             store.setSetting("mysql_dsn", "")
             state = .idle
+            tlsWarning = nil
         }
+    }
+
+    // MARK: 模式开关（local / remote）
+
+    /// 当前模式，来自 setting("app_mode")；未设置时按 local 处理（默认不联网）。
+    var mode: AppMode {
+        SyncEngine.mode(from: store.setting("app_mode"))
+    }
+
+    var isRemoteMode: Bool {
+        switch mode {
+        case .remote:
+            return true
+        case .local:
+            return false
+        }
+    }
+
+    func setMode(_ mode: AppMode) {
+        store.setSetting("app_mode", SyncEngine.rawValue(of: mode))
+    }
+
+    private static func rawValue(of mode: AppMode) -> String {
+        switch mode {
+        case .remote:
+            return "remote"
+        case .local:
+            return "local"
+        }
+    }
+
+    private static func mode(from raw: String) -> AppMode {
+        let value = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return value == "remote" ? .remote : .local
     }
 
     // MARK: 测试连接
@@ -519,17 +588,18 @@ final class SyncEngine: ObservableObject {
         defer { release() }
         state = .syncing
         do {
-            let version = try await onWorkQueue { () -> String in
+            let result = try await onWorkQueue { () -> (String, String?) in
                 let client = MySQLClient(config: config)
                 defer { client.close() }
                 try client.connect()
                 _ = try client.query("SELECT 1")
-                return client.serverVersion
+                return (client.serverVersion, client.tlsWarning)
             }
+            applyTLSWarning(result.1)
             state = lastSync.map { SyncState.success($0) } ?? .idle
-            return version
+            return result.0
         } catch {
-            state = .failed(text(of: error))
+            state = .failed(redact(text(of: error)))
             throw error
         }
     }
@@ -537,6 +607,10 @@ final class SyncEngine: ObservableObject {
     // MARK: 增量同步（先推后拉）
 
     func syncNow() async throws -> SyncReport {
+        // local 模式直接返回空报告：不报错、不动 state、不联网
+        guard isRemoteMode else {
+            return SyncReport(pushed: 0, pulled: 0, at: Date())
+        }
         guard let config = config else {
             let message = "尚未配置 MySQL 连接，无法同步"
             state = .failed(message)
@@ -551,6 +625,7 @@ final class SyncEngine: ObservableObject {
         do {
             let session = try await onWorkQueue { try SyncSession.open(config: config) }
             active = session
+            applyTLSWarning(session.tlsWarning)
 
             // 1) 主线程：读本地游标 + 取待推数据
             let localMark = store.lastSyncAt()
@@ -592,7 +667,7 @@ final class SyncEngine: ObservableObject {
             if let active {
                 await closeSession(active)
             }
-            state = .failed(text(of: error))
+            state = .failed(redact(text(of: error)))
             throw error
         }
     }
@@ -600,6 +675,9 @@ final class SyncEngine: ObservableObject {
     // MARK: 远程全量覆盖本地
 
     func pullReplace() async throws -> SyncReport {
+        guard isRemoteMode else {
+            return SyncReport(pushed: 0, pulled: 0, at: Date())
+        }
         guard let config = config else {
             let message = "尚未配置 MySQL 连接，无法同步"
             state = .failed(message)
@@ -614,6 +692,7 @@ final class SyncEngine: ObservableObject {
         do {
             let session = try await onWorkQueue { try SyncSession.open(config: config) }
             active = session
+            applyTLSWarning(session.tlsWarning)
 
             let snapshot = try await onWorkQueue { try session.fetchAll() }
             try store.replaceAll(categories: snapshot.categories,
@@ -635,7 +714,7 @@ final class SyncEngine: ObservableObject {
             if let active {
                 await closeSession(active)
             }
-            state = .failed(text(of: error))
+            state = .failed(redact(text(of: error)))
             throw error
         }
     }
@@ -643,7 +722,7 @@ final class SyncEngine: ObservableObject {
     // MARK: 写后自动同步（2 秒防抖，fire-and-forget）
 
     func autoSyncAfterWrite() {
-        guard isConfigured else { return }
+        guard isRemoteMode, isConfigured else { return }
         debounce?.cancel()
         let item = DispatchWorkItem { [weak self] in
             guard let self else { return }
@@ -656,7 +735,36 @@ final class SyncEngine: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2, execute: item)
     }
 
+    /// 启动时同步（RootView 调）：只有 remote 模式且已配置才跑，失败不抛（原因已在 state 里）。
+    func syncOnLaunch() async {
+        guard isRemoteMode, isConfigured else { return }
+        _ = try? await syncNow()
+    }
+
     // MARK: 内部
+
+    private func applyTLSWarning(_ warning: String?) {
+        if let warning {
+            if tlsWarning == nil { tlsWarning = warning }
+        } else {
+            tlsWarning = nil
+        }
+    }
+
+    /// 脱敏：任何要展示/落日志的文本都过这里，密码与 DSN 里的密码段替换成 ****。
+    private func redact(_ text: String) -> String {
+        var output = text
+        let password = config?.password ?? ""
+        if !password.isEmpty {
+            output = output.replacingOccurrences(of: password, with: "****")
+        }
+        let pattern = "([A-Za-z]+://[^:/@\s]+:)[^@\s]*@"
+        if let regex = try? NSRegularExpression(pattern: pattern, options: []) {
+            let range = NSRange(output.startIndex..<output.endIndex, in: output)
+            output = regex.stringByReplacingMatches(in: output, options: [], range: range, withTemplate: "$1****@")
+        }
+        return output
+    }
 
     private func markSynced(_ date: Date) {
         state = .success(date)

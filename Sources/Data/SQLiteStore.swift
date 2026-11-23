@@ -73,7 +73,7 @@ final class SQLiteStore {
         return stmt
     }
 
-    private func run(_ sql: String, _ values: [Value]) throws {
+    private func run(_ sql: String, _ values: [Value] = []) throws {
         guard let stmt = prepare(sql, values) else { throw InventoryError.message(errText()) }
         defer { sqlite3_finalize(stmt) }
         let rc = sqlite3_step(stmt)
@@ -251,7 +251,7 @@ final class SQLiteStore {
 
     private func readMovement(_ st: OpaquePointer) -> Movement {
         Movement(id: text(st, 0), ts: int(st, 1),
-                 kind: MovementKind(rawValue: text(st, 2)) ?? .in,
+                 kind: MovementKind(rawValue: text(st, 2)) ?? .inbound,
                  categoryID: text(st, 3), batchID: optText(st, 4),
                  qtyCentijin: Int(int(st, 5)), unitPriceCent: Int(int(st, 6)),
                  amountCent: Int(int(st, 7)), party: text(st, 8),
@@ -393,7 +393,7 @@ final class SQLiteStore {
                   .int(Int64(Units.cent(fromYuan: unitCost))), .text(note), .int(now)])
             let docNo = try nextDocNo(prefix: "RK", date: date)
             let amount = centijin * Units.cent(fromYuan: unitCost) / 100
-            try insertMovement(Movement(id: UUID().uuidString, ts: ts, kind: .in, categoryID: catID,
+            try insertMovement(Movement(id: UUID().uuidString, ts: ts, kind: .inbound, categoryID: catID,
                                         batchID: batchID, qtyCentijin: centijin,
                                         unitPriceCent: Units.cent(fromYuan: unitCost),
                                         amountCent: amount, party: supplier,

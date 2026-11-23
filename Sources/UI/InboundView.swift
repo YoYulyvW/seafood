@@ -11,7 +11,7 @@ struct InboundView: View {
     }
 
     @State private var categories: [Category] = []
-    @State private var selectedID: String?
+    @State private var selectedID: String? = nil
     @State private var newMode = false
     @State private var newName = ""
     @State private var storage: StorageKind = .chilled
@@ -21,12 +21,14 @@ struct InboundView: View {
     @State private var supplier = ""
     @State private var origin = ""
     @State private var note = ""
-    @State private var errorText: String?
-    @State private var result: InboundResult?
+    @State private var errorText: String? = nil
+    @State private var result: InboundResult? = nil
     @State private var consecCount = 0
-    @State private var submitting = false
-    @FocusState private var focus: Field?
+    /// 远程版才自动同步；本地版不联网。
+    @AppStorage("app_mode") private var appMode = ""
 
+    @State private var submitting = false
+    @FocusState private var focus: Field? = nil
     private enum Field: Hashable {
         case weight
         case cost
@@ -360,8 +362,10 @@ struct InboundView: View {
                 newMode = false
                 newName = ""
             }
-            Task { @MainActor in
-                SyncEngine.shared.autoSyncAfterWrite()
+            if appMode == "remote" {
+                Task { @MainActor in
+                    SyncEngine.shared.autoSyncAfterWrite()
+                }
             }
         } catch {
             setError(uiErrorText(error))

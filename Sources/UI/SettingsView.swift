@@ -22,16 +22,20 @@ struct SettingsView: View {
     @State private var database = ""
     @State private var tls = "preferred"
     @State private var dsnText = ""
-    @State private var syncMessage: String?
-    @State private var syncError: String?
+    @State private var syncMessage: String? = nil
+    @State private var syncError: String? = nil
     @State private var syncWorking = false
 
     @State private var confirmClear = false
     @State private var confirmPull = false
-    @State private var dataMessage: String?
+    @State private var dataMessage: String? = nil
+    @State private var updateError: String? = nil
+    @State private var localIPA: URL? = nil
 
-    @State private var updateError: String?
-    @State private var localIPA: URL?
+    /// 使用模式：与 RootView 共用同一个 UserDefaults 键。
+    @AppStorage("app_mode") private var appMode = ""
+    @State private var showModeSetup = false
+    @State private var modeMessage: String? = nil
 
     private static let tlsOptions: [TLSOption] = [
         TLSOption(id: "preferred", label: "首选"),
@@ -42,6 +46,7 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             List {
+                modeSection
                 operatorSection
                 syncSection
                 updateSection
@@ -66,6 +71,80 @@ struct SettingsView: View {
             } message: {
                 Text("本地品类、批次、流水会被远程整库替换。如果本地还有没推上去的记录，先点“立即同步”。")
             }
+            .fullScreenCover(isPresented: $showModeSetup) {
+                ModeSetupView(appMode: $appMode, showsClose: true) {
+                    showModeSetup = false
+                }
+            }
+            .onChange(of: appMode) { value in
+                if value == "remote" {
+                    modeMessage = "已切到远程版，正在后台同步"
+                } else if value == "local" {
+                    modeMessage = "已切到本地版，自动同步已停止，本地数据保留"
+                }
+                loadFields()
+            }
+        }
+    }
+
+    // MARK: - 使用模式
+
+    private var modeLabel: String {
+        switch appMode {
+        case "local": return "本地版"
+        case "remote": return "远程版"
+        default: return "未设置"
+        }
+    }
+
+    @ViewBuilder
+    private var modeSection: some View {
+        Section {
+            KVLine(title: "当前模式", value: modeLabel, valueColor: Theme.ink)
+                .listRowBackground(Theme.surface)
+
+            Button {
+                switchToLocal()
+            } label: {
+                HStack {
+                    Text("切换到本地版")
+                    Spacer()
+                    if appMode == "local" {
+                        Image(systemName: "checkmark")
+                            .font(.footnote)
+                            .foregroundStyle(Theme.jade)
+                    }
+                }
+            }
+            .disabled(appMode == "local")
+            .listRowBackground(Theme.surface)
+
+            Button {
+                switchToRemote()
+            } label: {
+                HStack {
+                    Text("切换到远程版")
+                    Spacer()
+                    if appMode == "remote" {
+                        Image(systemName: "checkmark")
+                            .font(.footnote)
+                            .foregroundStyle(Theme.jade)
+                    }
+                }
+            }
+            .disabled(appMode == "remote")
+            .listRowBackground(Theme.surface)
+
+            if let modeMessage {
+                Text(modeMessage)
+                    .font(.footnote)
+                    .foregroundStyle(Theme.ink3)
+                    .listRowBackground(Theme.surface)
+            }
+        } header: {
+            Text("使用模式")
+        } footer: {
+            Text("本地版只写本机 SQLite；远程版多人共用一台 MySQL，写入后自动同步。切模式不会删数据。")
         }
     }
 
@@ -176,6 +255,16 @@ struct SettingsView: View {
                     .listRowBackground(Theme.surface)
             } else {
                 KVLine(title: "上次同步", value: "从未", valueColor: Theme.ink3)
+                    .listRowBackground(Theme.surface)
+            }
+
+            KVLine(title: "当前 DSN", value: maskedDSN, valueColor: Theme.ink3)
+                .listRowBackground(Theme.surface)
+
+            if appMode == "local" {
+                Text("当前是本地版：自动同步已暂停，远程配置保留着。")
+                    .font(.footnote)
+                    .foregroundStyle(Theme.ink3)
                     .listRowBackground(Theme.surface)
             }
 
@@ -300,9 +389,12 @@ struct SettingsView: View {
                     KVLine(title: "安装包", value: ByteSize.text(latest.size))
                     if updater.hasUpdate {
                         if updater.downloading {
-                            ProgressTrack(value: updater.progress)
+                            // UpdateChecker 只在完成时把 progress 置 1，所以这里用不确定进度条，避免百分比骗人
+                            ProgressView()
+                                .progressViewStyle(.linear)
+                                .tint(Theme.signal)
                                 .padding(.vertical, 4)
-                            Text("下载中 " + String(Int(updater.progress * 100)) + "%")
+                            Text("下载中…")
                                 .font(.caption)
                                 .foregroundStyle(Theme.ink3)
                         } else if let localIPA {
@@ -396,6 +488,29 @@ struct SettingsView: View {
         }
     }
 
+    // MARK: - 模式动作
+
+    private var maskedDSN: String {
+        guard let config = sync.config else { return "未配置" }
+        let auth = config.password.isEmpty ? config.user : config.user + ":••••"
+        return "mysql://" + auth + "@" + config.host + ":" + String(config.port) + "/" + config.database
+    }
+
+    private func switchToLocal() {
+        appMode = "local"
+        Haptic.tap()
+    }
+
+    private func switchToRemote() {
+        if sync.isConfigured {
+            appMode = "remote"
+            Haptic.success()
+        } else {
+            showModeSetup = true
+            Haptic.tap()
+        }
+    }
+
     // MARK: - 同步动作
 
     private func loadFields() {
@@ -409,7 +524,8 @@ struct SettingsView: View {
             password = config.password
             database = config.database
             tls = config.tls
-            dsnText = config.dsn
+            // dsnText 留空：不把带密码的 DSN 明文塞回输入框，当前 DSN 单独打码展示
+            dsnText = ""
         } else {
             host = "127.0.0.1"
             port = "3306"

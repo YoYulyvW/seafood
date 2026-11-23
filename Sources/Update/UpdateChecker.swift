@@ -92,7 +92,7 @@ final class UpdateChecker: ObservableObject {
             }
         }
         if !info.sha256.isEmpty {
-            let digest = try SHA256.hash(file: dest)
+            let digest = try FileDigest.hash(file: dest)
             if digest.lowercased() != info.sha256.lowercased() {
                 throw InventoryError.message("安装包校验失败（sha256 不符）")
             }
@@ -128,7 +128,7 @@ final class UpdateChecker: ObservableObject {
     }
 }
 
-enum SHA256 {
+enum FileDigest {
     static func hash(file url: URL) throws -> String {
         let handle = try FileHandle(forReadingFrom: url)
         defer { try? handle.close() }

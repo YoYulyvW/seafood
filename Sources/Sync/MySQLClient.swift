@@ -19,6 +19,12 @@
 //     NULL 返回 nil，其余值（整数 / 浮点 / 字符串 / 日期时间）一律按字符串取，不做本地类型转换
 //  5. 超时：连接 8 秒、读取 15 秒；全部错误信息中文
 //
+//  安全约定：
+//  - 密码只进 Keychain（service "com.yoyulyvw.seafood.mysql"，account = host + "/" + user），
+//    永远不写进 setting("mysql_dsn")，也不出现在任何错误消息里。
+//  - 标识符（库名）走白名单：[A-Za-z0-9_$] 且长度 1...64，不合法直接拒绝连接。
+//  - 所有拼进 SQL 的字面量统一走 SyncEngine.swift 里的 SQL.text（\ → \\、' → ''、\0 \n \r \x1a 转义）。
+//
 //  已知限制（重要）：MySQL 原生 TLS 是「先明文握手，再在同一 TCP 连接内发 SSLRequest 升级」。
 //  Network.framework 的 NWConnection 只能在建连时决定是否 TLS，无法中途升级。
 //  所以本文件的 TLS 分支适用于「连上即 TLS」的部署（stunnel / HAProxy / 云厂商 TLS 终结代理）；
@@ -45,6 +51,7 @@ enum MySQLClientError: LocalizedError {
     case tlsFailed(String)
     case authFailed(String)
     case databaseNotExist(String)
+    case invalidDatabase(String)
     case server(code: Int, message: String)
     case protocolViolation(String)
     case unsupported(String)
@@ -70,6 +77,8 @@ enum MySQLClientError: LocalizedError {
             return "认证失败：\(detail)"
         case .databaseNotExist(let detail):
             return "数据库不存在：\(detail)"
+        case .invalidDatabase(let detail):
+            return "库名不合法：\(detail)"
         case .server(let code, let message):
             return "MySQL 错误 \(code)：\(message)"
         case .protocolViolation(let detail):
@@ -114,7 +123,8 @@ struct MySQLConfig: Equatable {
         components.host = host
         components.port = port
         components.user = user
-        components.password = password.isEmpty ? nil : password
+        // 密码只进 Keychain，绝不写进 DSN（dsn 会落到 SQLite 的 setting 表里）
+        components.password = nil
         let name = database.trimmingCharacters(in: .whitespacesAndNewlines)
         components.path = name.isEmpty ? "" : "/" + name
         if normalizedTLS != "preferred" {
@@ -179,6 +189,81 @@ struct MySQLConfig: Equatable {
                            password: password,
                            database: database,
                            tls: tls)
+    }
+}
+
+// MARK: - Keychain 读写（密码唯一存放位置）
+
+extension MySQLConfig {
+    /// Keychain 的 service 名，全 App 唯一。
+    static let keychainService = "com.yoyulyvw.seafood.mysql"
+
+    /// account = host + "/" + user，换个账号或换个库地址就是另一条记录。
+    static func keychainAccount(host: String, user: String) -> String {
+        host + "/" + user
+    }
+
+    /// 写入（覆盖）密码。空密码等价于删除。返回是否成功。
+    @discardableResult
+    static func savePassword(_ password: String, host: String, user: String) -> Bool {
+        let base: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keychainService,
+            kSecAttrAccount as String: keychainAccount(host: host, user: user)
+        ]
+        SecItemDelete(base as CFDictionary)
+        guard !password.isEmpty else { return true }
+        var item = base
+        item[kSecValueData as String] = Data(password.utf8)
+        item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        return SecItemAdd(item as CFDictionary, nil) == errSecSuccess
+    }
+
+    /// 读取密码；没有记录或读取失败返回 nil。
+    static func loadPassword(host: String, user: String) -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keychainService,
+            kSecAttrAccount as String: keychainAccount(host: host, user: user),
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+        var result: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+              let data = result as? Data,
+              let text = String(data: data, encoding: .utf8) else {
+            return nil
+        }
+        return text
+    }
+
+    /// 删除密码记录。返回是否成功（没有记录也算成功）。
+    @discardableResult
+    static func deletePassword(host: String, user: String) -> Bool {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keychainService,
+            kSecAttrAccount as String: keychainAccount(host: host, user: user)
+        ]
+        let status = SecItemDelete(query as CFDictionary)
+        return status == errSecSuccess || status == errSecItemNotFound
+    }
+
+    /// 实例级便捷方法：把当前 config 的密码写进 Keychain。
+    @discardableResult
+    func storePassword() -> Bool {
+        MySQLConfig.savePassword(password, host: host, user: user)
+    }
+
+    /// 实例级便捷方法：缺密码时从 Keychain 补全，返回补全后的配置。
+    func withKeychainPassword() -> MySQLConfig {
+        guard password.isEmpty,
+              let stored = MySQLConfig.loadPassword(host: host, user: user) else {
+            return self
+        }
+        var copy = self
+        copy.password = stored
+        return copy
     }
 }
 
@@ -403,6 +488,9 @@ final class MySQLClient {
 
     private(set) var serverVersion: String = ""
 
+    /// preferred 模式降级明文时给 UI 的一次性警告（连上 TLS 时为 nil）。
+    private(set) var tlsWarning: String?
+
     init(config: MySQLConfig) {
         self.config = config
     }
@@ -416,6 +504,10 @@ final class MySQLClient {
 
     /// 握手 + 认证。重复调用会先关掉旧连接。
     func connect() throws {
+        // 库名会直接拼进握手包和 CREATE TABLE 的上下文，先做标识符白名单校验
+        guard MySQLClient.isValidIdentifier(config.database) else {
+            throw MySQLClientError.invalidDatabase("只允许 A-Za-z0-9_$ 且长度 1...64")
+        }
         close()
         switch config.normalizedTLS {
         case "disabled":
@@ -486,6 +578,8 @@ final class MySQLClient {
             do {
                 try establish(useTLS: useTLS)
                 MySQLClient.storeTLS(useTLS, for: cacheKey)
+                // preferred 下走明文就是降级：给 UI 一次性可见警告
+                tlsWarning = useTLS ? nil : MySQLClient.plaintextDowngradeWarning
                 return
             } catch let error as MySQLClientError {
                 lastError = error
@@ -548,7 +642,7 @@ final class MySQLClient {
             }
             parameters = NWParameters(tls: tls, tcp: tcp)
         } else {
-            parameters = NWParameters(tcp: tcp)
+            parameters = NWParameters(tls: nil, tcp: tcp)
         }
         parameters.allowLocalEndpointReuse = true
         let conn = NWConnection(host: NWEndpoint.Host(config.host), port: port, using: parameters)
@@ -612,6 +706,18 @@ final class MySQLClient {
         return false
     }
 
+    /// 标识符白名单：[A-Za-z0-9_$]，长度 1...64。库名/表名只允许这些字符，杜绝注入。
+    static func isValidIdentifier(_ value: String) -> Bool {
+        guard !value.isEmpty, value.count <= 64 else { return false }
+        return value.unicodeScalars.allSatisfy { identifierCharacters.contains($0) }
+    }
+
+    private static let identifierCharacters =
+        CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_$")
+
+    private static let plaintextDowngradeWarning =
+        "TLS 不可用，已按 tls=preferred 降级为明文连接（密码存 Keychain，但链路未加密）"
+
     private func classify(_ error: NWError) -> MySQLClientError {
         switch error {
         case .dns(let code):
@@ -646,9 +752,10 @@ final class MySQLClient {
             }
         }
         let detail = error.localizedDescription
-        return .tlsFailed(detail + "。注意：MySQL 原生 TLS 需要在同一 TCP 连接内二次升级，"
-            + "Network.framework 不支持中途升级；请把 tls 设为 preferred/disabled，"
-            + "或在服务端前置 stunnel / HAProxy 之类的 TLS 终结代理")
+        return .tlsFailed("服务端不支持 TLS（或未部署 TLS 终结代理），tls=required 时拒绝以明文连接。"
+            + "底层原因：" + detail
+            + "。提示：MySQL 原生 TLS 需要在同一 TCP 连接内二次升级，Network.framework 不支持中途升级；"
+            + "请部署 stunnel / HAProxy 之类的 TLS 终结代理，或把 tls 改为 preferred / disabled")
     }
 
     // MARK: 包读写

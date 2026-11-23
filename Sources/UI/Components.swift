@@ -343,19 +343,3 @@ struct DeltaBlock: View {
     }
 }
 
-struct ProgressTrack: View {
-    let value: Double
-
-    var body: some View {
-        GeometryReader { proxy in
-            ZStack(alignment: .leading) {
-                Capsule()
-                    .fill(Theme.ruleSoft)
-                Capsule()
-                    .fill(Theme.signal)
-                    .frame(width: proxy.size.width * min(max(value, 0), 1))
-            }
-        }
-        .frame(height: 6)
-    }
-}

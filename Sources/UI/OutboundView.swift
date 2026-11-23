@@ -11,18 +11,20 @@ struct OutboundView: View {
     }
 
     @State private var categories: [Category] = []
-    @State private var selectedID: String?
+    @State private var selectedID: String? = nil
     @State private var weightText = ""
     @State private var unit: WeightUnit = .jin
     @State private var priceText = ""
     @State private var items: [PendingItem] = []
     @State private var customer = ""
-    @State private var errorText: String?
+    @State private var errorText: String? = nil
     @State private var submitting = false
-    @State private var result: OutboundResult?
-    @State private var showResult = false
-    @FocusState private var focus: Field?
+    @State private var result: OutboundResult? = nil
+    /// 远程版才自动同步；本地版不联网。
+    @AppStorage("app_mode") private var appMode = ""
 
+    @State private var showResult = false
+    @FocusState private var focus: Field? = nil
     private enum Field: Hashable {
         case weight
         case price
@@ -395,8 +397,10 @@ struct OutboundView: View {
             priceText = ""
             Haptic.success()
             showResult = true
-            Task { @MainActor in
-                SyncEngine.shared.autoSyncAfterWrite()
+            if appMode == "remote" {
+                Task { @MainActor in
+                    SyncEngine.shared.autoSyncAfterWrite()
+                }
             }
         } catch {
             setError(uiErrorText(error))

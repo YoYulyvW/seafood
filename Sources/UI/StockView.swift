@@ -3,11 +3,11 @@ import SwiftUI
 /// 库存首页：过磅单式大数字 + 品类行内联批次明细。
 struct StockView: View {
     @State private var stocks: [StockRow] = []
-    @State private var summary: DaySummary?
-    @State private var lastCountTs: Int64?
+    @State private var summary: DaySummary? = nil
+    @State private var lastCountTs: Int64? = nil
     @State private var search = ""
     @State private var filter: StorageFilter = .all
-    @State private var expandedID: String?
+    @State private var expandedID: String? = nil
     @State private var batchCache: [String: [Batch]] = [:]
     @State private var showInbound = false
     @State private var showOutbound = false

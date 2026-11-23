@@ -5,7 +5,7 @@ struct FlowView: View {
     @State private var from = Calendar.current.startOfDay(for: Date())
     @State private var to = Calendar.current.startOfDay(for: Date())
     @State private var kindTag = "all"
-    @State private var categoryID: String?
+    @State private var categoryID: String? = nil
     @State private var categories: [Category] = []
     @State private var rows: [Movement] = []
 
@@ -29,7 +29,7 @@ struct FlowView: View {
     }
 
     private var inCentijin: Int {
-        rows.filter { $0.kind == .in }.reduce(0) { $0 + $1.qtyCentijin }
+        rows.filter { $0.kind == .inbound }.reduce(0) { $0 + $1.qtyCentijin }
     }
 
     private var outCentijin: Int {
@@ -37,7 +37,7 @@ struct FlowView: View {
     }
 
     private var inAmountCent: Int {
-        rows.filter { $0.kind == .in }.reduce(0) { $0 + $1.amountCent }
+        rows.filter { $0.kind == .inbound }.reduce(0) { $0 + $1.amountCent }
     }
 
     private var outAmountCent: Int {
@@ -180,7 +180,7 @@ struct FlowView: View {
     // MARK: - 分组头
 
     private func dayHeader(_ group: FlowGroup) -> some View {
-        let dayIn = group.items.filter { $0.kind == .in }.reduce(0) { $0 + $1.qtyCentijin }
+        let dayIn = group.items.filter { $0.kind == .inbound }.reduce(0) { $0 + $1.qtyCentijin }
         let dayOut = -group.items.filter { $0.kind == .out }.reduce(0) { $0 + $1.qtyCentijin }
         return HStack(spacing: Theme.s2) {
             Text(group.day)
@@ -243,7 +243,7 @@ struct FlowView: View {
 
     private func kindColor(_ kind: MovementKind) -> Color {
         switch kind {
-        case .in: return Theme.jade
+        case .inbound: return Theme.jade
         case .out: return Theme.signal
         case .loss: return Theme.ink2
         case .count: return Theme.ice
