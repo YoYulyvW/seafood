@@ -49,7 +49,6 @@ struct SettingsView: View {
                 modeSection
                 operatorSection
                 syncSection
-                updateSection
                 dataSection
                 aboutSection
             }
@@ -366,30 +365,65 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - 检查更新
+    // MARK: - 数据
 
     @ViewBuilder
-    private var updateSection: some View {
+    private var dataSection: some View {
         Section {
-            KVLine(title: "当前版本", value: updater.currentVersion + " (" + String(updater.currentBuild) + ")")
-                .listRowBackground(Theme.surface)
+            Button(role: .destructive) {
+                confirmClear = true
+            } label: {
+                Text("清空本地数据")
+            }
+            .listRowBackground(Theme.surface)
 
+            Button {
+                reseed()
+            } label: {
+                Text("重新灌演示数据")
+            }
+            .listRowBackground(Theme.surface)
+
+            if let dataMessage {
+                Text(dataMessage)
+                    .font(.footnote)
+                    .foregroundStyle(Theme.ink3)
+                    .listRowBackground(Theme.surface)
+            }
+        } header: {
+            Text("数据")
+        } footer: {
+            Text("清空后需要重新录入，或从远程同步拉回。")
+        }
+    }
+
+    // MARK: - 关于（含更新）
+
+    @ViewBuilder
+    private var aboutSection: some View {
+        Section {
             Button {
                 checkUpdate()
             } label: {
-                HStack {
-                    Text(updater.checking ? "检查中…" : "检查更新")
+                HStack(spacing: Theme.s2) {
+                    Text("版本")
+                        .foregroundStyle(Theme.ink)
                     Spacer()
+                    Text(updater.currentVersion + " (" + String(updater.currentBuild) + ")")
+                        .foregroundStyle(Theme.ink2)
+                        .monospacedDigit()
                     if updater.checking {
                         ProgressView()
-                            .scaleEffect(0.8)
+                            .scaleEffect(0.7)
                     } else {
                         Image(systemName: "arrow.clockwise")
                             .font(.footnote)
                             .foregroundStyle(Theme.ink3)
                     }
                 }
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
             .disabled(updater.checking || updater.downloading)
             .listRowBackground(Theme.surface)
 
@@ -405,7 +439,6 @@ struct SettingsView: View {
                     KVLine(title: "安装包", value: ByteSize.text(latest.size))
                     if updater.hasUpdate {
                         if updater.downloading {
-                            // UpdateChecker 只在完成时把 progress 置 1，所以这里用不确定进度条，避免百分比骗人
                             ProgressView()
                                 .progressViewStyle(.linear)
                                 .tint(Theme.signal)
@@ -447,60 +480,13 @@ struct SettingsView: View {
                 ErrorLine(text: updateError)
                     .listRowBackground(Theme.surface)
             }
-        } header: {
-            Text("检查更新")
-        } footer: {
-            Text("安装包下载后校验大小与 sha256，再交给 TrollStore 安装。")
-        }
-    }
 
-    // MARK: - 数据
-
-    @ViewBuilder
-    private var dataSection: some View {
-        Section {
-            Button(role: .destructive) {
-                confirmClear = true
-            } label: {
-                Text("清空本地数据")
-            }
-            .listRowBackground(Theme.surface)
-
-            Button {
-                reseed()
-            } label: {
-                Text("重新灌演示数据")
-            }
-            .listRowBackground(Theme.surface)
-
-            if let dataMessage {
-                Text(dataMessage)
-                    .font(.footnote)
-                    .foregroundStyle(Theme.ink3)
-                    .listRowBackground(Theme.surface)
-            }
-        } header: {
-            Text("数据")
-        } footer: {
-            Text("清空后需要重新录入，或从远程同步拉回。")
-        }
-    }
-
-    // MARK: - 关于
-
-    @ViewBuilder
-    private var aboutSection: some View {
-        Section {
-            KVLine(title: "版本", value: updater.currentVersion)
-                .listRowBackground(Theme.surface)
-            KVLine(title: "构建号", value: String(updater.currentBuild))
-                .listRowBackground(Theme.surface)
             KVLine(title: "数据存储", value: "本地 SQLite", valueColor: Theme.ink3)
                 .listRowBackground(Theme.surface)
         } header: {
             Text("关于")
         } footer: {
-            Text("纸色磅单 · 本地优先 · 无第三方依赖")
+            Text("点版本号检查更新；安装包校验大小与 sha256 后交给 TrollStore 安装。")
         }
     }
 
@@ -717,8 +703,7 @@ struct SettingsView: View {
     }
 
     private func reseed() {
-        SQLiteStore.shared.resetAll()
-        SQLiteStore.shared.seedIfNeeded()
+        SQLiteStore.shared.seedDemoNow()
         dataMessage = "演示数据已重新生成"
         Haptic.success()
     }

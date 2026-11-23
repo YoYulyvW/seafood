@@ -151,6 +151,7 @@ final class SQLiteStore {
         INSERT OR IGNORE INTO setting(k, v) VALUES ('sync_last_at', '0');
         INSERT OR IGNORE INTO setting(k, v) VALUES ('operator', '');
         INSERT OR IGNORE INTO setting(k, v) VALUES ('seeded', '0');
+        INSERT OR IGNORE INTO setting(k, v) VALUES ('init_done', '0');
         INSERT OR IGNORE INTO setting(k, v) VALUES ('mysql_dsn', '');
         INSERT OR IGNORE INTO setting(k, v) VALUES ('update_url', 'https://backups.lyvw.top:4433');
         """)
@@ -678,8 +679,27 @@ final class SQLiteStore {
 
     // MARK: - 演示数据
 
+    /// 只在“这台机器第一次打开 App”时灌演示数据。
+    /// 清空数据后 seeded 会回到 0，但 init_done 仍是 1，因此不会再自动灌回来。
     func seedIfNeeded() {
-        guard setting("seeded") != "1" else { return }
+        if setting("init_done") == "1" || setting("seeded") == "1" {
+            setSetting("init_done", "1")
+            return
+        }
+        seedDemoData()
+        setSetting("seeded", "1")
+        setSetting("init_done", "1")
+    }
+
+    /// 设置页「重新灌演示数据」用：清空后强制再灌一次。
+    func seedDemoNow() {
+        resetAll()
+        seedDemoData()
+        setSetting("seeded", "1")
+        setSetting("init_done", "1")
+    }
+
+    private func seedDemoData() {
         let cats: [(String, StorageKind, Double)] = [
             ("基围虾", .chilled, 150), ("三文鱼", .frozen, 200),
             ("南美白对虾", .frozen, 120), ("花蛤", .live, 80),
@@ -731,7 +751,6 @@ final class SQLiteStore {
                                     unitPriceCent: Units.cent(fromYuan: price))
             _ = try? outbound(customer: party, items: [item], at: Date().addingTimeInterval(offset))
         }
-        setSetting("seeded", "1")
     }
 
     func resetAll() {
