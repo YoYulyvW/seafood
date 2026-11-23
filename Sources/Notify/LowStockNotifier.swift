@@ -23,6 +23,9 @@ final class LowStockNotifier {
 
     /// 传 rows 可复用调用方已经查好的库存；nil 时自己查。
     func check(rows: [StockRow]? = nil) async {
+        // 用户手动关掉顶部告警后，1 小时内连系统通知也不再打扰
+        let snoozeUntil = UserDefaults.standard.double(forKey: "stock_alert_snooze_until")
+        if Date().timeIntervalSince1970 < snoozeUntil { return }
         let low = (rows ?? SQLiteStore.shared.stock()).filter { $0.isLow }
         guard !low.isEmpty else { return }
         let status = await authorizationStatus()

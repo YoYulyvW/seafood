@@ -18,8 +18,11 @@ struct RootView: View {
                 ModeSetupView()
                     .transition(.opacity)
             } else {
-                tabs
-                    .transition(.opacity)
+                VStack(spacing: 0) {
+                    StockAlertBanner()
+                    tabs
+                }
+                .transition(.opacity)
             }
         }
         .animation(.easeInOut(duration: 0.26), value: appMode)
@@ -28,12 +31,14 @@ struct RootView: View {
             autoSyncIfNeeded()
             checkUpdateOnForeground()
             checkLowStock()
+            StockAlertCenter.shared.refresh()
         }
         .onChange(of: appMode) { _ in autoSyncIfNeeded() }
         .onChange(of: scenePhase) { phase in
             if phase == .active {
                 checkUpdateOnForeground()
                 checkLowStock()
+                StockAlertCenter.shared.refresh()
             }
         }
         .alert("发现新版本", isPresented: $showUpdateAlert) {

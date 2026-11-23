@@ -475,6 +475,7 @@ struct OutboundView: View {
             priceText = ""
             Haptic.success()
             SQLiteStore.shared.addPartyName("customer", customer)
+            StockAlertCenter.shared.refresh()
             ToastCenter.shared.show("出库成功 · " + res.docNo, kind: .success)
             showResult = true
             Task { await LowStockNotifier.shared.check() }

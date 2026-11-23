@@ -321,6 +321,7 @@ struct StockView: View {
     // MARK: - 数据
 
     private func reload() {
+        StockAlertCenter.shared.refresh(playSound: false)
         let store = SQLiteStore.shared
         summary = store.summary()
         stocks = store.stock()
