@@ -1,0 +1,46 @@
+name: Probe upload channel
+
+on:
+  push:
+    branches: [probe]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Probe
+        env:
+          UPLOAD_URL: ${{ vars.UPLOAD_URL }}
+        run: |
+          set -uo pipefail
+          {
+            echo "UPLOAD_URL=${UPLOAD_URL:-<unset>}"
+            echo "--- OIDC request"
+            OIDC=$(curl -fsS -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=seafood-upload" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("value",""))' || true)
+            echo "oidc_len=${#OIDC}"
+            echo "--- healthz"
+            curl -sS -m 20 -o - -w "\nHTTP %{http_code}\n" "${UPLOAD_URL}/api/healthz" || echo "healthz curl failed"
+            echo "--- upload without auth"
+            curl -sS -m 30 -o - -w "\nHTTP %{http_code}\n" -X POST "${UPLOAD_URL}/api/app/upload" || echo "noauth curl failed"
+            echo "--- upload with OIDC (dummy ipa, build=1 -> 应被 409 拒绝，证明身份通过)"
+            echo dummy > /tmp/dummy.ipa
+            curl -sS -m 60 -o - -w "\nHTTP %{http_code}\n" -H "Authorization: Bearer ${OIDC}" \
+              -F "file=@/tmp/dummy.ipa" -F "version=0.0.0" -F "build=1" -F "notes=probe" \
+              "${UPLOAD_URL}/api/app/upload" || echo "oidc upload curl failed"
+          } > probe.txt 2>&1
+          cat probe.txt
+
+      - name: Publish probe log
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "probe-${GITHUB_RUN_ID}" --notes "upload probe ${GITHUB_SHA::7}" probe.txt || gh release upload "probe-${GITHUB_RUN_ID}" probe.txt --clobber
