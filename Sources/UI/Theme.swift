@@ -14,6 +14,9 @@ enum Theme {
     static let signal = dyn(0xBF3A28, 0xE25843)
     static let jade = dyn(0x1D5C4E, 0x63B79B)
     static let ice = dyn(0x8FAEB6, 0x8FB6BE)
+    // 主按钮：深色下不能用亮白底，夜里刺眼，改成深灰底 + 暖白字
+    static let primaryFill = dyn(0x16191B, 0x2A3031)
+    static let primaryText = dyn(0xFAF7EF, 0xEDEAE2)
 
     private static func dyn(_ light: UInt32, _ dark: UInt32) -> Color {
         Color(UIColor { traits in
@@ -123,10 +126,10 @@ struct PrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 16, weight: .semibold))
-            .foregroundStyle(Theme.surface)
+            .foregroundStyle(Theme.primaryText)
             .frame(maxWidth: .infinity)
             .frame(height: 50)
-            .background(Theme.ink)
+            .background(Theme.primaryFill)
             .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
             .opacity(configuration.isPressed ? 0.82 : 1)
             .scaleEffect(configuration.isPressed ? 0.985 : 1)

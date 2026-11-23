@@ -164,7 +164,7 @@ final class SQLiteStore {
         INSERT OR IGNORE INTO setting(k, v) VALUES ('seeded', '0');
         INSERT OR IGNORE INTO setting(k, v) VALUES ('init_done', '0');
         INSERT OR IGNORE INTO setting(k, v) VALUES ('mysql_dsn', '');
-        INSERT OR IGNORE INTO setting(k, v) VALUES ('update_url', 'https://backups.lyvw.top:4433');
+        INSERT OR IGNORE INTO setting(k, v) VALUES ('update_url', '');
         """)
     }
 

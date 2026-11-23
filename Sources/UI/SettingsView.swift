@@ -35,6 +35,7 @@ struct SettingsView: View {
     @AppStorage("alert_style") private var alertStyle = "bubble"
     @State private var syncExpanded = false
     @State private var updateError: String? = nil
+    @State private var updateURLText = ""
     @State private var confirmDemo = false
     @State private var exportURL: URL?
     @State private var showImporter = false
@@ -587,6 +588,21 @@ struct SettingsView: View {
                     .listRowBackground(Theme.surface)
             }
 
+            HStack(spacing: Theme.s2) {
+                Text("更新地址")
+                Spacer(minLength: Theme.s2)
+                TextField("留空则用构建注入的值", text: $updateURLText)
+                    .multilineTextAlignment(.trailing)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .font(Theme.number(11, weight: .regular))
+                    .onChange(of: updateURLText) { value in
+                        SQLiteStore.shared.setSetting("update_url",
+                                                      value.trimmingCharacters(in: .whitespacesAndNewlines))
+                    }
+            }
+            .listRowBackground(Theme.surface)
+
             KVLine(title: "数据存储",
                    value: SQLiteStore.shared.hasDemoData() ? "本地 SQLite · 含演示数据" : "本地 SQLite",
                    valueColor: Theme.ink3)
@@ -626,6 +642,7 @@ struct SettingsView: View {
     // MARK: - 同步动作
 
     private func loadFields() {
+        updateURLText = SQLiteStore.shared.setting("update_url")
         operatorName = SQLiteStore.shared.setting("operator")
         let config = sync.config
         syncOn = config != nil

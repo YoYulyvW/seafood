@@ -33,6 +33,7 @@ targets:
         PRODUCT_NAME: Seafood
         MARKETING_VERSION: "1.0.0"
         CURRENT_PROJECT_VERSION: "1"
+        UPDATE_BASE_URL: ""
         INFOPLIST_FILE: Sources/Info.plist
         GENERATE_INFOPLIST_FILE: "NO"
         TARGETED_DEVICE_FAMILY: "1"

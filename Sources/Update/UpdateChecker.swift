@@ -35,14 +35,25 @@ final class UpdateChecker: ObservableObject {
         Int(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1") ?? 1
     }
 
+    /// 更新地址优先级：设置页手填 > 构建期注入的 Info.plist 键。代码里不留域名。
     private var baseURL: URL? {
-        let raw = SQLiteStore.shared.setting("update_url").trimmingCharacters(in: .whitespacesAndNewlines)
-        let value = raw.isEmpty ? "https://backups.lyvw.top:4433" : raw
-        return URL(string: value)
+        let typed = SQLiteStore.shared.setting("update_url").trimmingCharacters(in: .whitespacesAndNewlines)
+        if !typed.isEmpty { return URL(string: typed) }
+        let bundled = (Bundle.main.infoDictionary?["UpdateBaseURL"] as? String ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if !bundled.isEmpty, !bundled.contains("$(") { return URL(string: bundled) }
+        return nil
+    }
+
+    var configuredBaseURLText: String {
+        baseURL?.absoluteString ?? ""
     }
 
     func check() async {
-        guard let base = baseURL else { errorText = "更新地址不合法"; return }
+        guard let base = baseURL else {
+            errorText = "还没配置更新地址：在设置 → 关于里填一次即可"
+            return
+        }
         checking = true
         errorText = nil
         defer { checking = false }

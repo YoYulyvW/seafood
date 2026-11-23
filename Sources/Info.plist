@@ -41,6 +41,8 @@
 	<array>
 		<string>apple-magnifier</string>
 	</array>
+	<key>UpdateBaseURL</key>
+	<string>$(UPDATE_BASE_URL)</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 </dict>

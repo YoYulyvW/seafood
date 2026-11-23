@@ -44,6 +44,8 @@ jobs:
           xcodebuild -list -project SeafoodInventory.xcodeproj
 
       - name: Build (unsigned)
+        env:
+          UPDATE_BASE_URL: ${{ vars.UPDATE_BASE_URL }}
         run: |
           set -o pipefail
           if ! xcodebuild \
@@ -56,6 +58,7 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             AD_HOC_CODE_SIGNING_ALLOWED=YES \
+            UPDATE_BASE_URL="${UPDATE_BASE_URL}" \
             build > build.log 2>&1; then
             echo "===== BUILD FAILED ====="
             grep -nE "error:|BUILD FAILED|The following build commands failed" build.log | head -200 || true
@@ -86,7 +89,7 @@ jobs:
             "version": "${VERSION}",
             "build": ${BUILD_NO},
             "notes": "自动构建，基于 ${GITHUB_SHA::7}",
-            "ipa_url": "https://backups.lyvw.top:4433/api/app/download/${IPA}",
+            "ipa_url": "/api/app/download/${IPA}",
             "min_ios": "16.4",
             "size": ${SIZE},
             "sha256": "${SHA}"
@@ -115,6 +118,23 @@ jobs:
           # 滚动 tag 指最新，便于固定 URL
           gh release delete seafood-latest --yes --cleanup-tag >/dev/null 2>&1 || true
           gh release create seafood-latest --title "最新构建" --notes "$NOTES" "${{ env.IPA }}" manifest.json >/dev/null
+
+      - name: Publish to device channel
+        if: ${{ secrets.UPLOAD_TOKEN != '' }}
+        continue-on-error: true
+        env:
+          UPLOAD_TOKEN: ${{ secrets.UPLOAD_TOKEN }}
+          UPLOAD_URL: ${{ vars.UPLOAD_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${UPLOAD_URL}" ]; then echo "UPLOAD_URL 未配置，跳过回传"; exit 0; fi
+          curl -fsS --retry 3 --retry-all-errors -m 180 \
+            -H "X-Upload-Token: ${UPLOAD_TOKEN}" \
+            -F "file=@${IPA}" \
+            -F "version=${VERSION}" \
+            -F "build=${BUILD_NO}" \
+            -F "notes=自动构建 ${GITHUB_SHA::7}" \
+            "${UPLOAD_URL}/api/app/upload"
 
       - name: Upload build log on failure
         if: failure()
