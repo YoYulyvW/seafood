@@ -57,7 +57,7 @@ struct RootView: View {
                     ), titles: Tab.allCases.map { $0.title }, icons: Tab.allCases.map { $0.icon })
                         .frame(maxWidth: .infinity)
                         .padding(.horizontal, 20)
-                        .padding(.bottom, 21)
+                        .padding(.bottom, 1)
 
                     if alertStyle == "bubble" {
                         StockAlertBubble(expanded: $bubbleExpanded)
@@ -130,7 +130,7 @@ struct RootView: View {
         content
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 // 只挤安全区，不画任何东西：页面背景照旧通铺到屏幕底部
-                Color.clear.frame(height: 96)
+                Color.clear.frame(height: 76)
             }
             .opacity(tab == tag ? 1 : 0)
             .allowsHitTesting(tab == tag)
