@@ -10,7 +10,8 @@ struct InkTabBar: View {
     private let barHeight: CGFloat = 62
     private let itemHeight: CGFloat = 52
     private let maxItemWidth: CGFloat = 82
-    private var pillHeight: CGFloat { itemHeight - 4 }   // 48：只比胶囊内高少 4，上下对称
+    private let pillInset: CGFloat = 4                   // 左右各留 4，选中块宽度 = 项宽 - 8
+    private var pillHeight: CGFloat { itemHeight - 4 }   // 48：上下各 7，居中对称
 
     @State private var dragStartIndex: Int = 0
     @GestureState private var dragTranslation: CGFloat = 0
