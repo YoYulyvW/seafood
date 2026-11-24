@@ -164,7 +164,8 @@ final class SQLiteStore {
             operator TEXT NOT NULL DEFAULT '',
             action TEXT NOT NULL,
             target TEXT NOT NULL,
-            detail TEXT NOT NULL
+            detail TEXT NOT NULL,
+            updated_at INTEGER NOT NULL DEFAULT 0
         );
         CREATE TABLE IF NOT EXISTS setting (k TEXT PRIMARY KEY, v TEXT NOT NULL);
         INSERT OR IGNORE INTO setting(k, v) VALUES ('sync_last_at', '0');
@@ -173,6 +174,7 @@ final class SQLiteStore {
         INSERT OR IGNORE INTO setting(k, v) VALUES ('init_done', '0');
         INSERT OR IGNORE INTO setting(k, v) VALUES ('mysql_dsn', '');
         INSERT OR IGNORE INTO setting(k, v) VALUES ('update_url', '');
+        ALTER TABLE audit_log ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0;
         """)
     }
 
@@ -805,9 +807,10 @@ final class SQLiteStore {
         var name = operatorName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if name.isEmpty { name = setting("operator") }
         if name.isEmpty { name = "未署名" }
-        try? run("INSERT INTO audit_log(id, ts, operator, action, target, detail) VALUES (?, ?, ?, ?, ?, ?)",
-                 [.text(UUID().uuidString), .int(Fmt.millis()), .text(name),
-                  .text(action), .text(target), .text(detail)])
+        let now = Fmt.millis()
+        try? run("INSERT INTO audit_log(id, ts, operator, action, target, detail, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                 [.text(UUID().uuidString), .int(now), .text(name),
+                  .text(action), .text(target), .text(detail), .int(now)])
     }
 
     func auditEntries(limit: Int = 300) -> [AuditEntry] {
@@ -818,6 +821,39 @@ final class SQLiteStore {
                                   action: text(st, 3), target: text(st, 4), detail: text(st, 5)))
         }
         return out
+    }
+
+    func changedAudits(since: Int64) -> [AuditEntry] {
+        var out: [AuditEntry] = []
+        rows("SELECT id, ts, operator, action, target, detail FROM audit_log WHERE updated_at > ? ORDER BY updated_at",
+             [.int(since)]) { st in
+            out.append(AuditEntry(id: text(st, 0), ts: int(st, 1), operatorName: text(st, 2),
+                                  action: text(st, 3), target: text(st, 4), detail: text(st, 5)))
+        }
+        return out
+    }
+
+    func allAudits() -> [AuditEntry] {
+        var out: [AuditEntry] = []
+        rows("SELECT id, ts, operator, action, target, detail FROM audit_log", []) { st in
+            out.append(AuditEntry(id: text(st, 0), ts: int(st, 1), operatorName: text(st, 2),
+                                  action: text(st, 3), target: text(st, 4), detail: text(st, 5)))
+        }
+        return out
+    }
+
+    /// 远程拉回来的审计：追加，不覆盖本地已有记录（审计只增不减）
+    func applyRemoteAudits(_ entries: [AuditEntry]) throws {
+        for entry in entries {
+            try run("INSERT OR IGNORE INTO audit_log(id, ts, operator, action, target, detail, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    [.text(entry.id), .int(entry.ts), .text(entry.operatorName),
+                     .text(entry.action), .text(entry.target), .text(entry.detail), .int(entry.ts)])
+        }
+    }
+
+    func replaceAudits(_ entries: [AuditEntry]) throws {
+        try run("DELETE FROM audit_log", [])
+        try applyRemoteAudits(entries)
     }
 
     // MARK: - 批次校正（留痕）

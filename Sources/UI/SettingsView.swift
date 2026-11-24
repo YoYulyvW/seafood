@@ -37,6 +37,7 @@ struct SettingsView: View {
     @State private var updateError: String? = nil
     @State private var updateURLText = ""
     @State private var confirmDemo = false
+    @State private var showOperatorPrompt = false
     @State private var exportURL: URL?
     @State private var showImporter = false
     @State private var localIPA: URL? = nil
@@ -64,6 +65,11 @@ struct SettingsView: View {
                 aboutSection
             }
             .listStyle(.insetGrouped)
+            .sheet(isPresented: $showOperatorPrompt) {
+                OperatorPromptSheet { value in
+                    operatorName = value
+                }
+            }
             .fileImporter(isPresented: $showImporter,
                           allowedContentTypes: [.json],
                           allowsMultipleSelection: false) { result in
@@ -205,19 +211,21 @@ struct SettingsView: View {
     private var operatorSection: some View {
         Section {
             HStack(spacing: Theme.s2) {
-                TextField("例如：小码酱", text: $operatorName)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .submitLabel(.done)
+                Text("当前操作员")
+                Spacer(minLength: Theme.s2)
+                Text(operatorName.isEmpty ? "未设置" : operatorName)
+                    .foregroundStyle(operatorName.isEmpty ? Theme.signal : Theme.ink2)
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.ink3)
+            }
+            .listRowBackground(Theme.surface)
+
+            if operatorName.isEmpty {
+                Button("设置操作员") {
+                    showOperatorPrompt = true
+                }
                 .listRowBackground(Theme.surface)
-                .onChange(of: operatorName) { value in
-                    SQLiteStore.shared.setSetting("operator", value)
-                }
-                Button("随机") {
-                    operatorName = OperatorNames.random()
-                }
-                .font(.footnote)
-                .foregroundStyle(Theme.signal)
             }
             NavigationLink {
                 AuditLogView()
@@ -228,7 +236,7 @@ struct SettingsView: View {
         } header: {
             Text("操作员")
         } footer: {
-            Text("会写进每一条流水的操作人字段。")
+            Text("确认后不可修改：流水、批次校正和审计日志都记这个名字，避免改完数据再改名字。")
         }
     }
 

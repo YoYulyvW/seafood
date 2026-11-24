@@ -261,10 +261,12 @@ struct StockView: View {
                     .rotationEffect(.degrees(expandedID == row.id ? 90 : 0))
             }
             .contentShape(Rectangle())
-            .onLongPressGesture(minimumDuration: 0.45) {
-                batchCategory = row.category
-                Haptic.tap()
-            }
+            .simultaneousGesture(
+                LongPressGesture(minimumDuration: 0.5).onEnded { _ in
+                    batchCategory = row.category
+                    Haptic.tap()
+                }
+            )
             .onTapGesture { toggle(row) }
 
             if expandedID == row.id {

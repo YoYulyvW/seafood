@@ -64,8 +64,9 @@ struct LocalChanges {
     var categories: [Category] = []
     var batches: [Batch] = []
     var movements: [Movement] = []
+    var audits: [SQLiteStore.AuditEntry] = []
 
-    var count: Int { categories.count + batches.count + movements.count }
+    var count: Int { categories.count + batches.count + movements.count + audits.count }
     var isEmpty: Bool { count == 0 }
 }
 
@@ -74,9 +75,10 @@ struct RemoteSnapshot {
     var categories: [Category] = []
     var batches: [Batch] = []
     var movements: [Movement] = []
+    var audits: [SQLiteStore.AuditEntry] = []
     var maxUpdatedAt: Int64 = 0
 
-    var count: Int { categories.count + batches.count + movements.count }
+    var count: Int { categories.count + batches.count + movements.count + audits.count }
 }
 
 // MARK: - 后台会话（只碰 MySQL，绝不碰 SQLiteStore）
@@ -167,6 +169,24 @@ final class SyncSession {
                 + " VALUES " + tuples)
             count += chunk.count
             maxUpdated = max(maxUpdated, SyncSession.maxUpdated(chunk.map { $0.updatedAt }))
+        }
+
+        for chunk in changes.audits.chunked(SyncSession.rowsPerStatement) {
+            let tuples = chunk.map { row in
+                "(" + [
+                    SQL.text(row.id),
+                    SQL.int64(row.ts),
+                    SQL.text(row.operatorName),
+                    SQL.text(row.action),
+                    SQL.text(row.target),
+                    SQL.text(row.detail),
+                    SQL.int64(row.ts)
+                ].joined(separator: ",") + ")"
+            }.joined(separator: ",")
+            _ = try client.execute("REPLACE INTO sf_audit"
+                + "(id,ts,operator,action,target,detail,updated_at)"
+                + " VALUES " + tuples)
+            count += chunk.count
         }
 
         for chunk in changes.movements.chunked(SyncSession.rowsPerStatement) {
@@ -300,6 +320,22 @@ final class SyncSession {
             snapshot.maxUpdatedAt = max(snapshot.maxUpdatedAt, row.int64("updated_at"))
         }
 
+        let auditRows = try client.query("SELECT id,ts,operator,action,target,detail,updated_at FROM sf_audit"
+            + condition.replacingOccurrences(of: "updated_at", with: "updated_at") + " ORDER BY updated_at")
+        snapshot.audits.reserveCapacity(auditRows.count)
+        for raw in auditRows {
+            let row = Row(raw)
+            snapshot.audits.append(SQLiteStore.AuditEntry(
+                id: row.text("id"),
+                ts: row.int64("ts"),
+                operatorName: row.text("operator"),
+                action: row.text("action"),
+                target: row.text("target"),
+                detail: row.text("detail")
+            ))
+            snapshot.maxUpdatedAt = max(snapshot.maxUpdatedAt, row.int64("updated_at"))
+        }
+
         return snapshot
     }
 
@@ -374,6 +410,19 @@ final class SyncSession {
             deleted tinyint NOT NULL DEFAULT 0,
             PRIMARY KEY (id),
             KEY idx_ts(ts),
+            KEY idx_updated(updated_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
+        _ = try client.execute("""
+        CREATE TABLE IF NOT EXISTS sf_audit(
+            id varchar(64) NOT NULL,
+            ts bigint NOT NULL DEFAULT 0,
+            operator varchar(60) NOT NULL DEFAULT '',
+            action varchar(40) NOT NULL DEFAULT '',
+            target varchar(160) NOT NULL DEFAULT '',
+            detail text,
+            updated_at bigint NOT NULL DEFAULT 0,
+            PRIMARY KEY (id),
             KEY idx_updated(updated_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """)
@@ -644,7 +693,8 @@ final class SyncEngine: ObservableObject {
             let changes = LocalChanges(
                 categories: store.changedCategories(since: localMark),
                 batches: store.changedBatches(since: localMark),
-                movements: store.changedMovements(since: localMark)
+                movements: store.changedMovements(since: localMark),
+                audits: store.changedAudits(since: localMark)
             )
 
             // 2) 后台：推送
@@ -657,6 +707,8 @@ final class SyncEngine: ObservableObject {
             try store.applyRemote(categories: pulled.categories,
                                   batches: pulled.batches,
                                   movements: pulled.movements)
+            try store.applyRemoteAudits(pulled.audits)
+            try store.applyRemoteAudits(pulled.audits)
 
             // 5) 算新游标：远程取 max(旧游标, 拉到的最值, 推到的最值)，本地再夹一次当前时间
             let now = Fmt.millis()
@@ -710,6 +762,7 @@ final class SyncEngine: ObservableObject {
             try store.replaceAll(categories: snapshot.categories,
                                  batches: snapshot.batches,
                                  movements: snapshot.movements)
+            try store.replaceAudits(snapshot.audits)
 
             let now = Fmt.millis()
             let newRemote = max(session.remoteWatermark, snapshot.maxUpdatedAt)
