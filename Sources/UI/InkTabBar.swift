@@ -10,7 +10,7 @@ struct InkTabBar: View {
     private let barHeight: CGFloat = 62
     private let itemHeight: CGFloat = 52
     private let maxItemWidth: CGFloat = 82
-    private let pillInset: CGFloat = 5
+    private let pillInset: CGFloat = 3
 
     @State private var dragStartIndex: Int = 0
     @GestureState private var dragTranslation: CGFloat = 0
@@ -48,15 +48,19 @@ struct InkTabBar: View {
             // 这样它才是"浮在页面上的一层玻璃"，而不是一块和背景同色的实块。
             .background(
                 RoundedRectangle(cornerRadius: 26, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                    .opacity(0.55)
-                    .compositingGroup()
+                    .fill(.regularMaterial)
+                    .overlay(
+                        // 一层很淡的纸色，保证在浅色页面上也能看出"有一条"
+                        RoundedRectangle(cornerRadius: 26, style: .continuous)
+                            .fill(Theme.surface.opacity(0.35))
+                    )
             )
             .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 26, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.28), lineWidth: 0.8)
+                    .strokeBorder(Color.white.opacity(0.42), lineWidth: 0.8)
             )
+            .shadow(color: Theme.ink.opacity(0.10), radius: 12, x: 0, y: 6)
             .contentShape(Rectangle())
             .simultaneousGesture(dragGesture(itemWidth: itemWidth))
         }
