@@ -10,6 +10,9 @@ struct FlowView: View {
     @State private var rows: [Movement] = []
     @State private var costMap: [String: Int] = [:]
     @AppStorage("show_profit") private var showProfit = true
+    private enum DateField: String, Identifiable { case from, to; var id: String { rawValue } }
+    @State private var editingDate: DateField?
+    @State private var draftDate = Date()
 
     /// 一天一组。
     struct FlowGroup: Identifiable {
@@ -24,6 +27,77 @@ struct FlowView: View {
         var map: [String: String] = [:]
         for cat in categories { map[cat.id] = cat.name }
         return map
+    }
+
+
+    // MARK: - 日期筛选（自适应显示，避免被截断）
+
+    private static let wideFmt: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "zh_CN")
+        f.dateFormat = "yy年M月d日"
+        return f
+    }()
+
+    private static let narrowFmt: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "zh_CN")
+        f.dateFormat = "yy/MM/dd"
+        return f
+    }()
+
+    /// 窄屏（<360pt）用 26/11/24，常规屏用 26年11月24日，都不带世纪。
+    private var isNarrow: Bool { UIScreen.main.bounds.width < 360 }
+
+    private func dateText(_ date: Date) -> String {
+        (isNarrow ? Self.narrowFmt : Self.wideFmt).string(from: date)
+    }
+
+    private func dateChip(title: String, date: Date, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Text(title)
+                    .font(Theme.label())
+                    .foregroundStyle(Theme.ink3)
+                Text(dateText(date))
+                    .font(Theme.number(13, weight: .medium))
+                    .foregroundStyle(Theme.ink)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+                Image(systemName: "calendar")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.ink3)
+            }
+            .padding(.horizontal, 10)
+            .frame(height: 36)
+            .background(Theme.surface)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(Theme.ruleSoft, lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func openPicker(_ field: DateField) {
+        editingDate = field
+        draftDate = field == .from ? from : to
+        Haptic.tap()
+    }
+
+    private func applyDraft() {
+        guard let field = editingDate else { return }
+        let day = Calendar.current.startOfDay(for: draftDate)
+        if field == .from {
+            from = day
+            if to < day { to = day }
+        } else {
+            to = day
+            if from > day { from = day }
+        }
+        editingDate = nil
+        load()
     }
 
     private func categoryName(_ id: String) -> String {
@@ -112,6 +186,30 @@ struct FlowView: View {
             .onChange(of: to) { _ in load() }
             .onChange(of: kindTag) { _ in load() }
             .onChange(of: categoryID) { _ in load() }
+            .sheet(item: $editingDate) { field in
+                NavigationStack {
+                    VStack(spacing: Theme.s4) {
+                        DatePicker("", selection: $draftDate, displayedComponents: .date)
+                            .datePickerStyle(.wheel)
+                            .labelsHidden()
+                            .environment(\.locale, Locale(identifier: "zh_CN"))
+                            .frame(maxWidth: .infinity)
+                        Button("确定") { applyDraft() }
+                            .buttonStyle(PrimaryButtonStyle())
+                            .padding(.horizontal, Theme.s4)
+                    }
+                    .padding(.top, Theme.s4)
+                    .background(PaperBackground())
+                    .navigationTitle(field == .from ? "开始日期" : "结束日期")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("取消") { editingDate = nil }
+                        }
+                    }
+                }
+                .presentationDetents([.height(320)])
+            }
         }
     }
 
@@ -154,15 +252,14 @@ struct FlowView: View {
 
                 RuleDivider()
 
-                HStack(spacing: Theme.s3) {
-                    DatePicker("从", selection: $from, displayedComponents: .date)
-                        .datePickerStyle(.compact)
-                        .environment(\.locale, Locale(identifier: "zh_CN"))
-                    DatePicker("到", selection: $to, displayedComponents: .date)
-                        .datePickerStyle(.compact)
-                        .environment(\.locale, Locale(identifier: "zh_CN"))
+                HStack(spacing: Theme.s2) {
+                    dateChip(title: "从", date: from) { openPicker(.from) }
+                    Text("到")
+                        .font(Theme.label())
+                        .foregroundStyle(Theme.ink3)
+                    dateChip(title: "到", date: to) { openPicker(.to) }
+                    Spacer(minLength: 0)
                 }
-                .font(.subheadline)
 
                 Picker("类型", selection: $kindTag) {
                     Text("全部").tag("all")
