@@ -5,6 +5,13 @@ struct StockView: View {
     @State private var stocks: [StockRow] = []
     @State private var summary: DaySummary? = nil
     @State private var lastCountTs: Int64? = nil
+    /// 由 RootView 传入：切到别的 tab 时为 false，用来收起搜索。
+    var isActive: Bool
+
+    init(isActive: Bool = true) {
+        self.isActive = isActive
+    }
+
     @State private var search = ""
     @State private var isSearching = false
     @FocusState private var searchFocused: Bool
@@ -58,10 +65,12 @@ struct StockView: View {
         NavigationStack {
             VStack(spacing: 0) {
                 List {
-                Section {
-                    header
-                    chips
-                    actions
+                if !isSearching {
+                    Section {
+                        header
+                        chips
+                        actions
+                    }
                 }
 
                 Section {
@@ -122,6 +131,12 @@ struct StockView: View {
                 try? await Task.sleep(nanoseconds: 220_000_000)
             }
             .onAppear { reload() }
+            .onChange(of: isActive) { active in
+                guard !active else { return }
+                searchFocused = false
+                isSearching = false
+                search = ""
+            }
             .sheet(item: $batchCategory) { category in
                 NavigationStack {
                     BatchListView(category: category)
@@ -330,7 +345,10 @@ struct StockView: View {
                     .submitLabel(.search)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
-                    .onSubmit { searchFocused = false }
+                    .onSubmit {
+                        searchFocused = false
+                        withAnimation(.easeOut(duration: 0.16)) { isSearching = false }
+                    }
                 if !search.isEmpty {
                     Button {
                         search = ""
@@ -359,6 +377,7 @@ struct StockView: View {
                         Button {
                             search = row.category.name
                             searchFocused = false
+                            withAnimation(.easeOut(duration: 0.16)) { isSearching = false }
                             Haptic.tap()
                         } label: {
                             HStack(spacing: Theme.s2) {

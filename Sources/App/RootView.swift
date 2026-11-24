@@ -112,7 +112,7 @@ struct RootView: View {
     /// 页面首次进入才挂载，之后常驻，切 tab 不丢输入状态。
     private var tabs: some View {
         ZStack {
-            if mountedTabs.contains(.stock) { page(StockView(), .stock) }
+            if mountedTabs.contains(.stock) { page(StockView(isActive: tab == .stock), .stock) }
             if mountedTabs.contains(.inbound) { page(InboundView(), .inbound) }
             if mountedTabs.contains(.outbound) { page(OutboundView(), .outbound) }
             if mountedTabs.contains(.flow) { page(FlowView(), .flow) }
