@@ -6,6 +6,8 @@ struct StockView: View {
     @State private var summary: DaySummary? = nil
     @State private var lastCountTs: Int64? = nil
     @State private var search = ""
+    @State private var isSearching = false
+    @FocusState private var searchFocused: Bool
     @State private var filter: StorageFilter = .all
     @State private var expandedID: String? = nil
     @State private var batchCache: [String: [Batch]] = [:]
@@ -54,7 +56,9 @@ struct StockView: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            VStack(spacing: 0) {
+                if isSearching { searchBar }
+                List {
                 Section {
                     header
                     chips
@@ -86,12 +90,28 @@ struct StockView: View {
                     .background(Theme.paper)
                 }
             }
+            }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .background(PaperBackground())
             .navigationTitle("库存")
             .navigationBarTitleDisplayMode(.inline)
-            .searchable(text: $search, placement: .navigationBarDrawer(displayMode: .always), prompt: "搜索品类")
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        withAnimation(.easeOut(duration: 0.18)) {
+                            isSearching = true
+                            searchFocused = true
+                        }
+                    } label: {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundStyle(Theme.ink)
+                    }
+                    .opacity(isSearching ? 0 : 1)
+                    .disabled(isSearching)
+                    .accessibilityLabel("搜索品类")
+                }
+            }
             .refreshable {
                 await MainActor.run { reload() }
                 try? await Task.sleep(nanoseconds: 220_000_000)
@@ -281,6 +301,45 @@ struct StockView: View {
         }
         .padding(.vertical, 4)
         .flatRow()
+    }
+
+    private var searchBar: some View {
+        HStack(spacing: Theme.s2) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(Theme.ink3)
+            TextField("搜索品类", text: $search)
+                .font(.system(size: 15))
+                .focused($searchFocused)
+                .submitLabel(.search)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+            if !search.isEmpty {
+                Button {
+                    search = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(Theme.ink3)
+                }
+                .buttonStyle(.plain)
+            }
+            Button("取消") {
+                withAnimation(.easeOut(duration: 0.18)) {
+                    search = ""
+                    isSearching = false
+                    searchFocused = false
+                }
+            }
+            .font(.system(size: 14, weight: .medium))
+            .foregroundStyle(Theme.signal)
+        }
+        .padding(.horizontal, Theme.s4)
+        .padding(.vertical, Theme.s2)
+        .background(Theme.surface)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(Theme.ruleSoft).frame(height: 1)
+        }
+        .transition(.move(edge: .top).combined(with: .opacity))
     }
 
     private func correctionLine(_ entry: SQLiteStore.AuditEntry) -> String {
