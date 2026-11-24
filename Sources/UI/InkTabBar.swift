@@ -44,29 +44,19 @@ struct InkTabBar: View {
                 .padding(.leading, leading)
             }
             .frame(width: geo.size.width, height: barHeight)
+            // 真正的玻璃容器：只有材质本身的折射，没有白色铺底、没有投影，
+            // 这样它才是"浮在页面上的一层玻璃"，而不是一块和背景同色的实块。
             .background(
                 RoundedRectangle(cornerRadius: 26, style: .continuous)
                     .fill(.ultraThinMaterial)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 26, style: .continuous)
-                            .fill(
-                                LinearGradient(
-                                    colors: [Color.white.opacity(0.22), Color.white.opacity(0.03)],
-                                    startPoint: .topLeading, endPoint: .bottomTrailing
-                                )
-                            )
-                    )
+                    .opacity(0.55)
+                    .compositingGroup()
             )
             .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 26, style: .continuous)
-                    .strokeBorder(
-                        LinearGradient(colors: [Color.white.opacity(0.5), Color.white.opacity(0.06)],
-                                       startPoint: .top, endPoint: .bottom),
-                        lineWidth: 1
-                    )
+                    .strokeBorder(Color.white.opacity(0.28), lineWidth: 0.8)
             )
-            .shadow(color: Theme.ink.opacity(0.12), radius: 16, x: 0, y: 8)
             .contentShape(Rectangle())
             .simultaneousGesture(dragGesture(itemWidth: itemWidth))
         }
@@ -92,12 +82,7 @@ struct InkTabBar: View {
             .fill(.ultraThinMaterial)
             .overlay(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [Color.white.opacity(0.42), Color.white.opacity(0.10)],
-                            startPoint: .top, endPoint: .bottom
-                        )
-                    )
+                    .fill(Color.white.opacity(0.14))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
@@ -116,8 +101,7 @@ struct InkTabBar: View {
                     .strokeBorder(Color.white.opacity(0.18), lineWidth: 0.8)
             )
             .frame(width: width, height: itemHeight - pillInset * 2)
-            .shadow(color: Theme.ink.opacity(0.14), radius: 10, x: 0, y: 4)
-            .shadow(color: Theme.ink.opacity(0.06), radius: 2, x: 0, y: 1)
+            .shadow(color: Theme.ink.opacity(0.06), radius: 4, x: 0, y: 1)
             .animation(springCurve, value: index)
     }
 
