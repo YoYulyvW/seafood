@@ -69,7 +69,7 @@ struct InboundView: View {
                 }
             }
             .padding(Theme.s4)
-            .padding(.bottom, Theme.s6)
+            .padding(.bottom, 120)
         }
         .scrollDismissesKeyboard(.interactively)
         .sheet(isPresented: $showSupplierHistory) {

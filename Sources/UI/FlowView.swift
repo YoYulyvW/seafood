@@ -168,6 +168,13 @@ struct FlowView: View {
                         }
                     }
                 }
+
+                Section {
+                    Color.clear
+                        .frame(height: 96)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                }
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)

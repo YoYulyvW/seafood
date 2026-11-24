@@ -63,6 +63,13 @@ struct SettingsView: View {
                 displaySection
                 dataSection
                 aboutSection
+
+                Section {
+                    Color.clear
+                        .frame(height: 96)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                }
             }
             .listStyle(.insetGrouped)
             .sheet(isPresented: $showOperatorPrompt) {

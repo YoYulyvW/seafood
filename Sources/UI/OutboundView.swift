@@ -109,6 +109,13 @@ struct OutboundView: View {
                 submitCard
                     .cardRow(top: 8, bottom: 24)
             }
+
+                Section {
+                    Color.clear
+                        .frame(height: 96)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                }
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)

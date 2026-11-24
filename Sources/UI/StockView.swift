@@ -97,6 +97,12 @@ struct StockView: View {
                     .padding(.vertical, 6)
                     .background(Theme.paper)
                 }
+                Section {
+                    Color.clear
+                        .frame(height: 96)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                }
             }
             }
             // 用 safeAreaInset 而不是 overlay：搜索层占位，下面内容整体下移，不会盖住品类卡片
