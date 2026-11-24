@@ -14,6 +14,7 @@ struct InkTabBar: View {
     private var pillHeight: CGFloat { itemHeight - 4 }   // 48：上下各 7，居中对称
 
     @State private var dragStartIndex: Int = 0
+    @State private var pillIndex: CGFloat = 0
     @GestureState private var dragTranslation: CGFloat = 0
     @State private var isDragging = false
 
@@ -38,7 +39,10 @@ struct InkTabBar: View {
                             .frame(width: itemWidth, height: itemHeight)
                             .contentShape(Rectangle())
                             .onTapGesture {
-                                withAnimation(springCurve) { index = i }
+                                withAnimation(springCurve) {
+                                    pillIndex = CGFloat(i)
+                                    index = i
+                                }
                                 Haptic.tap()
                             }
                     }
@@ -67,6 +71,12 @@ struct InkTabBar: View {
             .simultaneousGesture(dragGesture(itemWidth: itemWidth))
         }
         .frame(height: barHeight)
+        .onAppear { pillIndex = CGFloat(index) }
+        .onChange(of: index) { value in
+            if !isDragging {
+                withAnimation(springCurve) { pillIndex = CGFloat(value) }
+            }
+        }
     }
 
     // MARK: - 组件
@@ -128,9 +138,12 @@ struct InkTabBar: View {
 
     /// 未拖动时吸在 index 上；拖动时跟随手指，松手吸附到最近的一格。
     private func pillOffset(itemWidth: CGFloat) -> CGFloat {
-        let base = CGFloat(index) * itemWidth
-        guard isDragging else { return base }
-        let raw = CGFloat(dragStartIndex) * itemWidth + dragTranslation
+        let raw: CGFloat
+        if isDragging {
+            raw = CGFloat(dragStartIndex) * itemWidth + dragTranslation
+        } else {
+            raw = pillIndex * itemWidth
+        }
         let minX: CGFloat = 0
         let maxX = itemWidth * CGFloat(max(titles.count - 1, 0))
         return min(max(raw, minX), maxX)
@@ -150,10 +163,19 @@ struct InkTabBar: View {
             }
             .onEnded { value in
                 let raw = CGFloat(dragStartIndex) * itemWidth + value.translation.width
-                let target = Int((raw / itemWidth).rounded())
-                let clamped = min(max(target, 0), titles.count - 1)
-                isDragging = false
-                withAnimation(springCurve) { index = clamped }
+                let clamped = min(max(Int((raw / itemWidth).rounded()), 0), titles.count - 1)
+                // 先把块钉在手指松开的位置（不带动画），再从这里吸到目标格，
+                // 避免 @GestureState 归零造成"先弹回原位再滑过去"的顿挫。
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) {
+                    pillIndex = min(max(raw / itemWidth, 0), CGFloat(titles.count - 1))
+                    isDragging = false
+                }
+                withAnimation(springCurve) {
+                    pillIndex = CGFloat(clamped)
+                    index = clamped
+                }
                 Haptic.tap()
             }
     }

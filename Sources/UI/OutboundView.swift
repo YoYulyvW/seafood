@@ -235,6 +235,7 @@ struct OutboundView: View {
                             .keyboardType(.decimalPad)
                             .focused($focus, equals: .price)
                             .inkField()
+                            .frame(height: 44)
                     }
 
                     LabeledField("批次（默认最早）") {
@@ -262,6 +263,7 @@ struct OutboundView: View {
                                     .foregroundStyle(Theme.ink3)
                             }
                             .inkField()
+                            .frame(height: 44)
                         }
                     }
                 }
