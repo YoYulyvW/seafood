@@ -283,6 +283,21 @@ struct StockView: View {
         .flatRow()
     }
 
+    private func correctionLine(_ entry: SQLiteStore.AuditEntry) -> String {
+        var text = Fmt.dayTimeString(entry.ts) + " 由 " + entry.operatorName + "："
+        if entry.beforeText.isEmpty && entry.afterText.isEmpty {
+            text += entry.detail
+        } else {
+            text += entry.beforeText + " → " + entry.afterText
+        }
+        if !entry.reason.isEmpty { text += "　原因：" + entry.reason }
+        return text
+    }
+
+    private func fixesPadding(_ batch: Batch, _ batches: [Batch]) -> CGFloat {
+        SQLiteStore.shared.corrections(batchID: batch.id, limit: 1).isEmpty ? 7 : 0
+    }
+
     private func batchDetail(_ row: StockRow) -> some View {
         let batches = batchCache[row.id] ?? []
         return VStack(spacing: 0) {
@@ -294,6 +309,7 @@ struct StockView: View {
                     .padding(.vertical, 6)
             }
             ForEach(batches) { batch in
+                VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 8) {
                     Text(batch.batchNo)
                         .font(Theme.number(10, weight: .regular))
@@ -311,7 +327,22 @@ struct StockView: View {
                         .foregroundStyle(Theme.ink3)
                         .frame(width: 72, alignment: .trailing)
                 }
-                .padding(.vertical, 7)
+                .padding(.top, 7)
+
+                let fixes = SQLiteStore.shared.corrections(batchID: batch.id, limit: 2)
+                if !fixes.isEmpty {
+                    ForEach(fixes) { entry in
+                        Text(correctionLine(entry))
+                            .font(.system(size: 10))
+                            .foregroundStyle(Theme.signal.opacity(0.9))
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.bottom, 2)
+                }
+                }
+                .padding(.bottom, fixesPadding(batch, batches))
+
                 if batch.id != batches.last?.id {
                     RuleDivider()
                 }

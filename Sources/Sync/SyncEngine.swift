@@ -180,11 +180,15 @@ final class SyncSession {
                     SQL.text(row.action),
                     SQL.text(row.target),
                     SQL.text(row.detail),
-                    SQL.int64(row.ts)
+                    SQL.int64(row.ts),
+                    SQL.text(row.batchID),
+                    SQL.text(row.beforeText),
+                    SQL.text(row.afterText),
+                    SQL.text(row.reason)
                 ].joined(separator: ",") + ")"
             }.joined(separator: ",")
             _ = try client.execute("REPLACE INTO sf_audit"
-                + "(id,ts,operator,action,target,detail,updated_at)"
+                + "(id,ts,operator,action,target,detail,updated_at,batch_id,before_text,after_text,reason)"
                 + " VALUES " + tuples)
             count += chunk.count
         }
@@ -320,7 +324,7 @@ final class SyncSession {
             snapshot.maxUpdatedAt = max(snapshot.maxUpdatedAt, row.int64("updated_at"))
         }
 
-        let auditRows = try client.query("SELECT id,ts,operator,action,target,detail,updated_at FROM sf_audit"
+        let auditRows = try client.query("SELECT id,ts,operator,action,target,detail,updated_at,batch_id,before_text,after_text,reason FROM sf_audit"
             + condition.replacingOccurrences(of: "updated_at", with: "updated_at") + " ORDER BY updated_at")
         snapshot.audits.reserveCapacity(auditRows.count)
         for raw in auditRows {
@@ -331,7 +335,11 @@ final class SyncSession {
                 operatorName: row.text("operator"),
                 action: row.text("action"),
                 target: row.text("target"),
-                detail: row.text("detail")
+                detail: row.text("detail"),
+                batchID: row.text("batch_id"),
+                beforeText: row.text("before_text"),
+                afterText: row.text("after_text"),
+                reason: row.text("reason")
             ))
             snapshot.maxUpdatedAt = max(snapshot.maxUpdatedAt, row.int64("updated_at"))
         }

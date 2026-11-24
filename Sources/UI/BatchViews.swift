@@ -85,6 +85,7 @@ struct BatchEditView: View {
     @State private var note = ""
     @State private var reason = ""
     @State private var errorText: String?
+    @State private var history: [SQLiteStore.AuditEntry] = []
 
     var body: some View {
         ScrollView {
@@ -157,6 +158,32 @@ struct BatchEditView: View {
                     }
                 }
 
+                if !history.isEmpty {
+                    Card {
+                        VStack(alignment: .leading, spacing: Theme.s2) {
+                            Text("修改记录")
+                                .font(Theme.label())
+                                .foregroundStyle(Theme.ink3)
+                            ForEach(history) { entry in
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(Fmt.dayTimeString(entry.ts) + " · " + entry.operatorName)
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .foregroundStyle(Theme.ink2)
+                                    Text(entry.beforeText + " → " + entry.afterText)
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(Theme.ink)
+                                    Text("原因：" + entry.reason)
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(Theme.ink3)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.vertical, 3)
+                                if entry.id != history.last?.id { RuleDivider() }
+                            }
+                        }
+                    }
+                }
+
                 if let errorText {
                     Text(errorText)
                         .font(.footnote)
@@ -190,6 +217,7 @@ struct BatchEditView: View {
         supplier = batch.supplier
         origin = batch.origin
         note = batch.note
+        history = SQLiteStore.shared.corrections(batchID: batch.id)
     }
 
     private func save() {

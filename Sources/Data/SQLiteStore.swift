@@ -165,7 +165,11 @@ final class SQLiteStore {
             action TEXT NOT NULL,
             target TEXT NOT NULL,
             detail TEXT NOT NULL,
-            updated_at INTEGER NOT NULL DEFAULT 0
+            updated_at INTEGER NOT NULL DEFAULT 0,
+            batch_id TEXT NOT NULL DEFAULT '',
+            before_text TEXT NOT NULL DEFAULT '',
+            after_text TEXT NOT NULL DEFAULT '',
+            reason TEXT NOT NULL DEFAULT ''
         );
         CREATE TABLE IF NOT EXISTS setting (k TEXT PRIMARY KEY, v TEXT NOT NULL);
         INSERT OR IGNORE INTO setting(k, v) VALUES ('sync_last_at', '0');
@@ -175,6 +179,10 @@ final class SQLiteStore {
         INSERT OR IGNORE INTO setting(k, v) VALUES ('mysql_dsn', '');
         INSERT OR IGNORE INTO setting(k, v) VALUES ('update_url', '');
         ALTER TABLE audit_log ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE audit_log ADD COLUMN batch_id TEXT NOT NULL DEFAULT '';
+        ALTER TABLE audit_log ADD COLUMN before_text TEXT NOT NULL DEFAULT '';
+        ALTER TABLE audit_log ADD COLUMN after_text TEXT NOT NULL DEFAULT '';
+        ALTER TABLE audit_log ADD COLUMN reason TEXT NOT NULL DEFAULT '';
         """)
     }
 
@@ -801,43 +809,68 @@ final class SQLiteStore {
         var action: String
         var target: String
         var detail: String
+        var batchID: String = ""
+        var beforeText: String = ""
+        var afterText: String = ""
+        var reason: String = ""
     }
 
-    func logAudit(action: String, target: String, detail: String, operatorName: String? = nil) {
+    func logAudit(action: String, target: String, detail: String, operatorName: String? = nil,
+                  batchID: String = "", beforeText: String = "", afterText: String = "", reason: String = "") {
         var name = operatorName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if name.isEmpty { name = setting("operator") }
         if name.isEmpty { name = "未署名" }
         let now = Fmt.millis()
-        try? run("INSERT INTO audit_log(id, ts, operator, action, target, detail, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        try? run("INSERT INTO audit_log(id, ts, operator, action, target, detail, updated_at, batch_id, before_text, after_text, reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                  [.text(UUID().uuidString), .int(now), .text(name),
-                  .text(action), .text(target), .text(detail), .int(now)])
+                  .text(action), .text(target), .text(detail), .int(now),
+                  .text(batchID), .text(beforeText), .text(afterText), .text(reason)])
     }
 
     func auditEntries(limit: Int = 300) -> [AuditEntry] {
         var out: [AuditEntry] = []
-        rows("SELECT id, ts, operator, action, target, detail FROM audit_log ORDER BY ts DESC LIMIT ?",
+        rows("SELECT id, ts, operator, action, target, detail, batch_id, before_text, after_text, reason FROM audit_log ORDER BY ts DESC LIMIT ?",
              [.int(Int64(limit))]) { st in
             out.append(AuditEntry(id: text(st, 0), ts: int(st, 1), operatorName: text(st, 2),
-                                  action: text(st, 3), target: text(st, 4), detail: text(st, 5)))
+                                  action: text(st, 3), target: text(st, 4), detail: text(st, 5),
+                                  batchID: text(st, 6), beforeText: text(st, 7),
+                                  afterText: text(st, 8), reason: text(st, 9)))
+        }
+        return out
+    }
+
+    /// 某个批次的修改记录（新的在前）
+    func corrections(batchID: String, limit: Int = 20) -> [AuditEntry] {
+        var out: [AuditEntry] = []
+        rows("SELECT id, ts, operator, action, target, detail, batch_id, before_text, after_text, reason FROM audit_log WHERE batch_id = ? ORDER BY ts DESC LIMIT ?",
+             [.text(batchID), .int(Int64(limit))]) { st in
+            out.append(AuditEntry(id: text(st, 0), ts: int(st, 1), operatorName: text(st, 2),
+                                  action: text(st, 3), target: text(st, 4), detail: text(st, 5),
+                                  batchID: text(st, 6), beforeText: text(st, 7),
+                                  afterText: text(st, 8), reason: text(st, 9)))
         }
         return out
     }
 
     func changedAudits(since: Int64) -> [AuditEntry] {
         var out: [AuditEntry] = []
-        rows("SELECT id, ts, operator, action, target, detail FROM audit_log WHERE updated_at > ? ORDER BY updated_at",
+        rows("SELECT id, ts, operator, action, target, detail, batch_id, before_text, after_text, reason FROM audit_log WHERE updated_at > ? ORDER BY updated_at",
              [.int(since)]) { st in
             out.append(AuditEntry(id: text(st, 0), ts: int(st, 1), operatorName: text(st, 2),
-                                  action: text(st, 3), target: text(st, 4), detail: text(st, 5)))
+                                  action: text(st, 3), target: text(st, 4), detail: text(st, 5),
+                                  batchID: text(st, 6), beforeText: text(st, 7),
+                                  afterText: text(st, 8), reason: text(st, 9)))
         }
         return out
     }
 
     func allAudits() -> [AuditEntry] {
         var out: [AuditEntry] = []
-        rows("SELECT id, ts, operator, action, target, detail FROM audit_log", []) { st in
+        rows("SELECT id, ts, operator, action, target, detail, batch_id, before_text, after_text, reason FROM audit_log", []) { st in
             out.append(AuditEntry(id: text(st, 0), ts: int(st, 1), operatorName: text(st, 2),
-                                  action: text(st, 3), target: text(st, 4), detail: text(st, 5)))
+                                  action: text(st, 3), target: text(st, 4), detail: text(st, 5),
+                                  batchID: text(st, 6), beforeText: text(st, 7),
+                                  afterText: text(st, 8), reason: text(st, 9)))
         }
         return out
     }
@@ -845,9 +878,10 @@ final class SQLiteStore {
     /// 远程拉回来的审计：追加，不覆盖本地已有记录（审计只增不减）
     func applyRemoteAudits(_ entries: [AuditEntry]) throws {
         for entry in entries {
-            try run("INSERT OR IGNORE INTO audit_log(id, ts, operator, action, target, detail, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            try run("INSERT OR IGNORE INTO audit_log(id, ts, operator, action, target, detail, updated_at, batch_id, before_text, after_text, reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     [.text(entry.id), .int(entry.ts), .text(entry.operatorName),
-                     .text(entry.action), .text(entry.target), .text(entry.detail), .int(entry.ts)])
+                     .text(entry.action), .text(entry.target), .text(entry.detail), .int(entry.ts),
+                     .text(entry.batchID), .text(entry.beforeText), .text(entry.afterText), .text(entry.reason)])
         }
     }
 
@@ -922,10 +956,20 @@ final class SQLiteStore {
             throw error
         }
 
+        let oldCatName = category(id: batch.categoryID)?.name ?? ""
+        let newCatName = category(id: input.newCategoryID)?.name ?? ""
+        let beforeText = oldCatName + " · " + Units.formatJin(batch.qtyLeftCentijin) + " 斤 · "
+            + (batch.supplier.isEmpty ? "—" : batch.supplier) + "/" + (batch.origin.isEmpty ? "—" : batch.origin)
+        let afterText = newCatName + " · " + Units.formatJin(input.newQtyCentijin) + " 斤 · "
+            + (input.supplier.isEmpty ? "—" : input.supplier) + "/" + (input.origin.isEmpty ? "—" : input.origin)
         logAudit(action: "批次校正",
-                 target: batch.batchNo + "（" + (category(id: input.newCategoryID)?.name ?? "") + "）",
+                 target: batch.batchNo + "（" + newCatName + "）",
                  detail: (changes.isEmpty ? "无字段变化" : changes.joined(separator: "；")) + "；原因：" + reason,
-                 operatorName: input.operatorName)
+                 operatorName: input.operatorName,
+                 batchID: batch.id,
+                 beforeText: beforeText,
+                 afterText: afterText,
+                 reason: reason)
     }
 
     // MARK: - 备份导出 / 导入
