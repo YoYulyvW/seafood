@@ -178,12 +178,27 @@ final class SQLiteStore {
         INSERT OR IGNORE INTO setting(k, v) VALUES ('init_done', '0');
         INSERT OR IGNORE INTO setting(k, v) VALUES ('mysql_dsn', '');
         INSERT OR IGNORE INTO setting(k, v) VALUES ('update_url', '');
-        ALTER TABLE audit_log ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0;
-        ALTER TABLE audit_log ADD COLUMN batch_id TEXT NOT NULL DEFAULT '';
-        ALTER TABLE audit_log ADD COLUMN before_text TEXT NOT NULL DEFAULT '';
-        ALTER TABLE audit_log ADD COLUMN after_text TEXT NOT NULL DEFAULT '';
-        ALTER TABLE audit_log ADD COLUMN reason TEXT NOT NULL DEFAULT '';
         """)
+        // 老库补列：逐条探测，避免一条失败把后面全吞掉
+        ensureColumn("audit_log", "updated_at", "INTEGER NOT NULL DEFAULT 0")
+        ensureColumn("audit_log", "batch_id", "TEXT NOT NULL DEFAULT ''")
+        ensureColumn("audit_log", "before_text", "TEXT NOT NULL DEFAULT ''")
+        ensureColumn("audit_log", "after_text", "TEXT NOT NULL DEFAULT ''")
+        ensureColumn("audit_log", "reason", "TEXT NOT NULL DEFAULT ''")
+    }
+
+    // MARK: - 迁移工具
+
+    private func columnNames(_ table: String) -> Set<String> {
+        var names: Set<String> = []
+        rows("PRAGMA table_info(" + table + ")", []) { names.insert(text($0, 1)) }
+        return names
+    }
+
+    /// 幂等补列：先查 table_info，缺了才 ALTER 一次。
+    private func ensureColumn(_ table: String, _ column: String, _ definition: String) {
+        guard !columnNames(table).contains(column) else { return }
+        exec("ALTER TABLE " + table + " ADD COLUMN " + column + " " + definition)
     }
 
     // MARK: - 设置项
@@ -950,26 +965,26 @@ final class SQLiteStore {
                         [.text(supplier), .text(origin), .text(note), .int(now), .text(batch.id)])
                 changes.append("来源/备注已改")
             }
+            let oldCatName = category(id: batch.categoryID)?.name ?? ""
+            let newCatName = category(id: input.newCategoryID)?.name ?? ""
+            let beforeText = oldCatName + " · " + Units.formatJin(batch.qtyLeftCentijin) + " 斤 · "
+                + (batch.supplier.isEmpty ? "—" : batch.supplier) + "/" + (batch.origin.isEmpty ? "—" : batch.origin)
+            let afterText = newCatName + " · " + Units.formatJin(input.newQtyCentijin) + " 斤 · "
+                + (input.supplier.isEmpty ? "—" : input.supplier) + "/" + (input.origin.isEmpty ? "—" : input.origin)
+
+            var operator = input.operatorName.trimmingCharacters(in: .whitespacesAndNewlines)
+            if operator.isEmpty { operator = setting("operator") }
+            if operator.isEmpty { operator = "未署名" }
+            try run("INSERT INTO audit_log(id, ts, operator, action, target, detail, updated_at, batch_id, before_text, after_text, reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    [.text(UUID().uuidString), .int(now), .text(operator), .text("批次校正"),
+                     .text(batch.batchNo + "（" + newCatName + "）"),
+                     .text((changes.isEmpty ? "无字段变化" : changes.joined(separator: "；")) + "；原因：" + reason),
+                     .int(now), .text(batch.id), .text(beforeText), .text(afterText), .text(reason)])
             try run("COMMIT")
         } catch {
             try? run("ROLLBACK")
             throw error
         }
-
-        let oldCatName = category(id: batch.categoryID)?.name ?? ""
-        let newCatName = category(id: input.newCategoryID)?.name ?? ""
-        let beforeText = oldCatName + " · " + Units.formatJin(batch.qtyLeftCentijin) + " 斤 · "
-            + (batch.supplier.isEmpty ? "—" : batch.supplier) + "/" + (batch.origin.isEmpty ? "—" : batch.origin)
-        let afterText = newCatName + " · " + Units.formatJin(input.newQtyCentijin) + " 斤 · "
-            + (input.supplier.isEmpty ? "—" : input.supplier) + "/" + (input.origin.isEmpty ? "—" : input.origin)
-        logAudit(action: "批次校正",
-                 target: batch.batchNo + "（" + newCatName + "）",
-                 detail: (changes.isEmpty ? "无字段变化" : changes.joined(separator: "；")) + "；原因：" + reason,
-                 operatorName: input.operatorName,
-                 batchID: batch.id,
-                 beforeText: beforeText,
-                 afterText: afterText,
-                 reason: reason)
     }
 
     // MARK: - 备份导出 / 导入
