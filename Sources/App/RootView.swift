@@ -9,6 +9,7 @@ struct RootView: View {
     @State private var showUpdateAlert = false
     @AppStorage("alert_style") private var alertStyle = "bubble"
     @State private var bubbleExpanded = false
+    @State private var showOperatorPrompt = false
     @State private var downloadedIPA: URL?
     @AppStorage("update_skipped_build") private var skippedBuild = 0
 
@@ -44,8 +45,12 @@ struct RootView: View {
             checkUpdateOnForeground()
             checkLowStock()
             StockAlertCenter.shared.refresh()
+            promptOperatorIfNeeded()
         }
-        .onChange(of: appMode) { _ in autoSyncIfNeeded() }
+        .onChange(of: appMode) { _ in
+            autoSyncIfNeeded()
+            promptOperatorIfNeeded()
+        }
         .onChange(of: tab) { _ in bubbleExpanded = false }
         .simultaneousGesture(
             DragGesture(minimumDistance: 24).onChanged { _ in
@@ -61,6 +66,9 @@ struct RootView: View {
                 checkLowStock()
                 StockAlertCenter.shared.refresh()
             }
+        }
+        .sheet(isPresented: $showOperatorPrompt) {
+            OperatorPromptSheet { _ in }
         }
         .alert("新版本已下载", isPresented: $showUpdateAlert) {
             Button("立即安装") { installDownloadedUpdate() }
@@ -91,6 +99,14 @@ struct RootView: View {
                 .tag(Tab.settings)
         }
         .background(PaperBackground())
+    }
+
+    /// 首次安装或老数据没操作员时，提示补一个（可随机）。
+    private func promptOperatorIfNeeded() {
+        guard !appMode.isEmpty else { return }
+        if SQLiteStore.shared.setting("operator").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            showOperatorPrompt = true
+        }
     }
 
     /// 回到前台检查一次低库存；同一品类每天只推一次。

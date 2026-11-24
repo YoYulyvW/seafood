@@ -204,7 +204,8 @@ struct SettingsView: View {
     @ViewBuilder
     private var operatorSection: some View {
         Section {
-            TextField("例如：小码酱", text: $operatorName)
+            HStack(spacing: Theme.s2) {
+                TextField("例如：小码酱", text: $operatorName)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .submitLabel(.done)
@@ -212,6 +213,18 @@ struct SettingsView: View {
                 .onChange(of: operatorName) { value in
                     SQLiteStore.shared.setSetting("operator", value)
                 }
+                Button("随机") {
+                    operatorName = OperatorNames.random()
+                }
+                .font(.footnote)
+                .foregroundStyle(Theme.signal)
+            }
+            NavigationLink {
+                AuditLogView()
+            } label: {
+                Text("审计日志")
+            }
+            .listRowBackground(Theme.surface)
         } header: {
             Text("操作员")
         } footer: {

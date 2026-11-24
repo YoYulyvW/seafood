@@ -20,6 +20,7 @@ struct InboundView: View {
     @State private var costText = ""
     @State private var supplier = ""
     @State private var showSupplierHistory = false
+    @State private var showOperatorPrompt = false
     @State private var origin = ""
     @State private var note = ""
     @State private var errorText: String? = nil
@@ -274,6 +275,11 @@ struct InboundView: View {
                 }
                 .buttonStyle(PrimaryButtonStyle())
                 .disabled(submitting)
+                .sheet(isPresented: $showOperatorPrompt) {
+                    OperatorPromptSheet { _ in
+                        submit()
+                    }
+                }
 
                 HStack(spacing: Theme.s2) {
                     Text("本次已连续录入 \(consecCount) 单")
@@ -326,6 +332,10 @@ struct InboundView: View {
     }
 
     private func submit() {
+        if SQLiteStore.shared.setting("operator").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            showOperatorPrompt = true
+            return
+        }
         errorText = nil
         focus = nil
 

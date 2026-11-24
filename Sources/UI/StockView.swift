@@ -45,6 +45,7 @@ struct StockView: View {
     }
 
     private var lowCount: Int { filtered.filter { $0.isLow }.count }
+    @State private var batchCategory: Category?
 
     private var stampText: String {
         guard let ts = lastCountTs else { return "未盘点" }
@@ -96,6 +97,11 @@ struct StockView: View {
                 try? await Task.sleep(nanoseconds: 220_000_000)
             }
             .onAppear { reload() }
+            .sheet(item: $batchCategory) { category in
+                NavigationStack {
+                    BatchListView(category: category)
+                }
+            }
             .sheet(isPresented: $showInbound) {
                 NavigationStack {
                     InboundView(embedded: true)
@@ -255,6 +261,10 @@ struct StockView: View {
                     .rotationEffect(.degrees(expandedID == row.id ? 90 : 0))
             }
             .contentShape(Rectangle())
+            .onLongPressGesture(minimumDuration: 0.45) {
+                batchCategory = row.category
+                Haptic.tap()
+            }
             .onTapGesture { toggle(row) }
 
             if expandedID == row.id {

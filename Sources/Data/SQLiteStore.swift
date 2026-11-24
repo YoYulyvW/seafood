@@ -158,6 +158,14 @@ final class SQLiteStore {
             used_at INTEGER NOT NULL,
             PRIMARY KEY(kind, name)
         );
+        CREATE TABLE IF NOT EXISTS audit_log (
+            id TEXT PRIMARY KEY,
+            ts INTEGER NOT NULL,
+            operator TEXT NOT NULL DEFAULT '',
+            action TEXT NOT NULL,
+            target TEXT NOT NULL,
+            detail TEXT NOT NULL
+        );
         CREATE TABLE IF NOT EXISTS setting (k TEXT PRIMARY KEY, v TEXT NOT NULL);
         INSERT OR IGNORE INTO setting(k, v) VALUES ('sync_last_at', '0');
         INSERT OR IGNORE INTO setting(k, v) VALUES ('operator', '');
@@ -780,6 +788,108 @@ final class SQLiteStore {
         try? run("DELETE FROM demo_mark")
         try? run("COMMIT")
         setSetting("seeded", "0")
+    }
+
+    // MARK: - 审计日志
+
+    struct AuditEntry: Identifiable {
+        var id: String
+        var ts: Int64
+        var operatorName: String
+        var action: String
+        var target: String
+        var detail: String
+    }
+
+    func logAudit(action: String, target: String, detail: String, operatorName: String? = nil) {
+        var name = operatorName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if name.isEmpty { name = setting("operator") }
+        if name.isEmpty { name = "未署名" }
+        try? run("INSERT INTO audit_log(id, ts, operator, action, target, detail) VALUES (?, ?, ?, ?, ?, ?)",
+                 [.text(UUID().uuidString), .int(Fmt.millis()), .text(name),
+                  .text(action), .text(target), .text(detail)])
+    }
+
+    func auditEntries(limit: Int = 300) -> [AuditEntry] {
+        var out: [AuditEntry] = []
+        rows("SELECT id, ts, operator, action, target, detail FROM audit_log ORDER BY ts DESC LIMIT ?",
+             [.int(Int64(limit))]) { st in
+            out.append(AuditEntry(id: text(st, 0), ts: int(st, 1), operatorName: text(st, 2),
+                                  action: text(st, 3), target: text(st, 4), detail: text(st, 5)))
+        }
+        return out
+    }
+
+    // MARK: - 批次校正（留痕）
+
+    struct BatchCorrection {
+        var batchID: String
+        var newCategoryID: String
+        var newQtyCentijin: Int
+        var supplier: String
+        var origin: String
+        var note: String
+        var reason: String
+        var operatorName: String
+    }
+
+    func correctBatch(_ input: BatchCorrection) throws {
+        guard let batch = allBatches().first(where: { $0.id == input.batchID }) else {
+            throw InventoryError.message("批次不存在")
+        }
+        let reason = input.reason.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !reason.isEmpty else { throw InventoryError.message("请填写校正原因") }
+        guard input.newQtyCentijin >= 0 else { throw InventoryError.message("数量不能为负") }
+        if batch.categoryID != input.newCategoryID, category(id: input.newCategoryID) == nil {
+            throw InventoryError.message("目标品类不存在")
+        }
+
+        let now = Fmt.millis()
+        var changes: [String] = []
+        try run("BEGIN IMMEDIATE")
+        do {
+            if batch.categoryID != input.newCategoryID {
+                let fromName = category(id: batch.categoryID)?.name ?? batch.categoryID
+                let toName = category(id: input.newCategoryID)?.name ?? input.newCategoryID
+                try run("UPDATE batch SET category_id = ?, updated_at = ? WHERE id = ?",
+                        [.text(input.newCategoryID), .int(now), .text(batch.id)])
+                try run("UPDATE movement SET category_id = ?, updated_at = ? WHERE batch_id = ?",
+                        [.text(input.newCategoryID), .int(now), .text(batch.id)])
+                changes.append("品类 " + fromName + " → " + toName)
+            }
+
+            let diff = input.newQtyCentijin - batch.qtyLeftCentijin
+            if diff != 0 {
+                try run("UPDATE batch SET qty_left_centijin = ?, updated_at = ? WHERE id = ?",
+                        [.int(Int64(input.newQtyCentijin)), .int(now), .text(batch.id)])
+                let kind: MovementKind = diff > 0 ? .count : .loss
+                try insertMovement(Movement(id: UUID().uuidString, ts: now, kind: kind,
+                                            categoryID: input.newCategoryID, batchID: batch.id,
+                                            qtyCentijin: diff, unitPriceCent: batch.unitCostCent,
+                                            amountCent: 0, party: "", operatorName: input.operatorName,
+                                            docNo: try nextDocNo(prefix: "JZ", date: Date()),
+                                            note: "批次校正：" + reason, updatedAt: now, deleted: false))
+                changes.append("数量 " + Units.formatJin(batch.qtyLeftCentijin) + " → " + Units.formatJin(input.newQtyCentijin) + " 斤")
+            }
+
+            let supplier = input.supplier.trimmingCharacters(in: .whitespacesAndNewlines)
+            let origin = input.origin.trimmingCharacters(in: .whitespacesAndNewlines)
+            let note = input.note.trimmingCharacters(in: .whitespacesAndNewlines)
+            if supplier != batch.supplier || origin != batch.origin || note != batch.note {
+                try run("UPDATE batch SET supplier = ?, origin = ?, note = ?, updated_at = ? WHERE id = ?",
+                        [.text(supplier), .text(origin), .text(note), .int(now), .text(batch.id)])
+                changes.append("来源/备注已改")
+            }
+            try run("COMMIT")
+        } catch {
+            try? run("ROLLBACK")
+            throw error
+        }
+
+        logAudit(action: "批次校正",
+                 target: batch.batchNo + "（" + (category(id: input.newCategoryID)?.name ?? "") + "）",
+                 detail: (changes.isEmpty ? "无字段变化" : changes.joined(separator: "；")) + "；原因：" + reason,
+                 operatorName: input.operatorName)
     }
 
     // MARK: - 备份导出 / 导入
