@@ -99,7 +99,8 @@ struct StockView: View {
                 }
             }
             }
-            .overlay(alignment: .top) {
+            // 用 safeAreaInset 而不是 overlay：搜索层占位，下面内容整体下移，不会盖住品类卡片
+            .safeAreaInset(edge: .top, spacing: 0) {
                 if isSearching {
                     searchOverlay
                         .transition(.opacity)
