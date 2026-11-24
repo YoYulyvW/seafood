@@ -50,7 +50,6 @@ struct RootView: View {
                             StockAlertBanner()
                         }
                         tabs
-                            .padding(.bottom, 83)   // 给自绘标签栏留出高度（62 + 21）
                     }
                     InkTabBar(index: Binding(
                         get: { Tab.allCases.firstIndex(of: tab) ?? 0 },
@@ -69,7 +68,6 @@ struct RootView: View {
                 .transition(.opacity)
             }
         }
-        .background(PaperBackground())
         .animation(.easeInOut(duration: 0.26), value: appMode)
         .onAppear {
             autoSyncIfNeeded()
@@ -130,6 +128,10 @@ struct RootView: View {
     @ViewBuilder
     private func page<V: View>(_ content: V, _ tag: Tab) -> some View {
         content
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                // 只挤安全区，不画任何东西：页面背景照旧通铺到屏幕底部
+                Color.clear.frame(height: 96)
+            }
             .opacity(tab == tag ? 1 : 0)
             .allowsHitTesting(tab == tag)
             .accessibilityHidden(tab != tag)
