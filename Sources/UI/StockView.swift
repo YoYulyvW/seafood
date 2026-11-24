@@ -222,6 +222,9 @@ struct StockView: View {
 
     private func categoryRow(_ row: StockRow) -> some View {
         VStack(spacing: 0) {
+            Button {
+                toggle(row)
+            } label: {
             HStack(alignment: .center, spacing: Theme.s3) {
                 VStack(alignment: .leading, spacing: 5) {
                     HStack(spacing: 6) {
@@ -261,13 +264,14 @@ struct StockView: View {
                     .rotationEffect(.degrees(expandedID == row.id ? 90 : 0))
             }
             .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
             .simultaneousGesture(
-                LongPressGesture(minimumDuration: 0.5).onEnded { _ in
+                LongPressGesture(minimumDuration: 0.6).onEnded { _ in
                     batchCategory = row.category
                     Haptic.tap()
                 }
             )
-            .onTapGesture { toggle(row) }
 
             if expandedID == row.id {
                 batchDetail(row)
