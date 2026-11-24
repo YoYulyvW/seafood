@@ -57,7 +57,6 @@ struct StockView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                if isSearching { searchBar }
                 List {
                 Section {
                     header
@@ -90,6 +89,12 @@ struct StockView: View {
                     .background(Theme.paper)
                 }
             }
+            }
+            .overlay(alignment: .top) {
+                if isSearching {
+                    searchOverlay
+                        .transition(.opacity)
+                }
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
@@ -303,43 +308,94 @@ struct StockView: View {
         .flatRow()
     }
 
-    private var searchBar: some View {
-        HStack(spacing: Theme.s2) {
-            Image(systemName: "magnifyingglass")
+    /// 匹配的品类名，最多 6 条；输入「鱼」就能直接给出「小黄鱼」这类已有名字。
+    private var suggestions: [StockRow] {
+        let keyword = search.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !keyword.isEmpty else { return [] }
+        return stocks
+            .filter { $0.category.name.localizedCaseInsensitiveContains(keyword) }
+            .prefix(6)
+            .map { $0 }
+    }
+
+    private var searchOverlay: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: Theme.s2) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Theme.ink3)
+                TextField("搜索品类", text: $search)
+                    .font(.system(size: 15))
+                    .focused($searchFocused)
+                    .submitLabel(.search)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .onSubmit { searchFocused = false }
+                if !search.isEmpty {
+                    Button {
+                        search = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(Theme.ink3)
+                    }
+                    .buttonStyle(.plain)
+                }
+                Button("取消") {
+                    withAnimation(.easeOut(duration: 0.16)) {
+                        search = ""
+                        isSearching = false
+                        searchFocused = false
+                    }
+                }
                 .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(Theme.ink3)
-            TextField("搜索品类", text: $search)
-                .font(.system(size: 15))
-                .focused($searchFocused)
-                .submitLabel(.search)
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(.never)
-            if !search.isEmpty {
-                Button {
-                    search = ""
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(Theme.ink3)
-                }
-                .buttonStyle(.plain)
+                .foregroundStyle(Theme.signal)
             }
-            Button("取消") {
-                withAnimation(.easeOut(duration: 0.18)) {
-                    search = ""
-                    isSearching = false
-                    searchFocused = false
+            .padding(.horizontal, Theme.s4)
+            .padding(.vertical, Theme.s2)
+
+            if !suggestions.isEmpty {
+                VStack(spacing: 0) {
+                    ForEach(suggestions) { row in
+                        Button {
+                            search = row.category.name
+                            searchFocused = false
+                            Haptic.tap()
+                        } label: {
+                            HStack(spacing: Theme.s2) {
+                                Image(systemName: "magnifyingglass")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(Theme.ink3)
+                                Text(row.category.name)
+                                    .font(.system(size: 14))
+                                    .foregroundStyle(Theme.ink)
+                                Tag(text: row.category.storage.label,
+                                    color: row.category.storage == .frozen ? Theme.ice : Theme.jade)
+                                Spacer(minLength: Theme.s2)
+                                Text(Units.formatJin(row.qtyCentijin) + " 斤")
+                                    .font(Theme.number(12, weight: .regular))
+                                    .foregroundStyle(Theme.ink3)
+                            }
+                            .padding(.horizontal, Theme.s4)
+                            .frame(height: 42)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        if row.id != suggestions.last?.id {
+                            Rectangle()
+                                .fill(Theme.ruleSoft)
+                                .frame(height: 1)
+                                .padding(.leading, Theme.s6)
+                        }
+                    }
                 }
+                .background(Theme.surface)
             }
-            .font(.system(size: 14, weight: .medium))
-            .foregroundStyle(Theme.signal)
         }
-        .padding(.horizontal, Theme.s4)
-        .padding(.vertical, Theme.s2)
         .background(Theme.surface)
         .overlay(alignment: .bottom) {
             Rectangle().fill(Theme.ruleSoft).frame(height: 1)
         }
-        .transition(.move(edge: .top).combined(with: .opacity))
+        .shadow(color: Theme.ink.opacity(0.08), radius: 8, x: 0, y: 4)
     }
 
     private func correctionLine(_ entry: SQLiteStore.AuditEntry) -> String {
