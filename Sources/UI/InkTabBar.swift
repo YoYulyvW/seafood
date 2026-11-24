@@ -44,17 +44,7 @@ struct InkTabBar: View {
                 .padding(.leading, leading)
             }
             .frame(width: geo.size.width, height: barHeight)
-            .background(glassBackground)
-            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .strokeBorder(
-                        LinearGradient(colors: [Color.white.opacity(0.22), Color.white.opacity(0.02)],
-                                       startPoint: .top, endPoint: .bottom),
-                        lineWidth: 1
-                    )
-            )
-            .shadow(color: Theme.ink.opacity(0.10), radius: 12, x: 0, y: 6)
+            .contentShape(Rectangle())
             .simultaneousGesture(dragGesture(itemWidth: itemWidth))
         }
         .frame(height: barHeight)
@@ -73,31 +63,39 @@ struct InkTabBar: View {
         .animation(springCurve, value: index)
     }
 
+    /// 只有选中项这一块是玻璃：材质折射 + 顶部高光 + 细描边 + 柔和落影。
     private func glassPill(width: CGFloat) -> some View {
-        RoundedRectangle(cornerRadius: 16, style: .continuous)
+        RoundedRectangle(cornerRadius: 18, style: .continuous)
             .fill(.ultraThinMaterial)
             .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(Theme.surface.opacity(index == dragStartIndex ? 0.45 : 0.62))
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [Color.white.opacity(0.30), Color.white.opacity(0.06)],
+                            startPoint: .top, endPoint: .bottom
+                        )
+                    )
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.55), lineWidth: 0.8)
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [Color.white.opacity(0.65), Color.white.opacity(0.12)],
+                            startPoint: .topLeading, endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1
+                    )
+            )
+            .overlay(
+                // 贴边的一圈内高光，模拟玻璃折射的亮边
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .inset(by: 1.5)
+                    .strokeBorder(Color.white.opacity(0.18), lineWidth: 0.8)
             )
             .frame(width: width, height: itemHeight - pillInset * 2)
-            .shadow(color: Theme.ink.opacity(0.10), radius: 8, x: 0, y: 3)
+            .shadow(color: Theme.ink.opacity(0.14), radius: 10, x: 0, y: 4)
+            .shadow(color: Theme.ink.opacity(0.06), radius: 2, x: 0, y: 1)
             .animation(springCurve, value: index)
-    }
-
-    /// 整条不做实心背景：只留一层很淡的雾面，让标签栏真正悬浮在页面上。
-    private var glassBackground: some View {
-        RoundedRectangle(cornerRadius: 22, style: .continuous)
-            .fill(.ultraThinMaterial)
-            .opacity(0.28)
-            .overlay(
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .fill(Color.white.opacity(0.05))
-            )
     }
 
     // MARK: - 位置与拖拽
