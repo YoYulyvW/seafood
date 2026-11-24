@@ -10,7 +10,7 @@ struct InkTabBar: View {
     private let barHeight: CGFloat = 62
     private let itemHeight: CGFloat = 52
     private let maxItemWidth: CGFloat = 82
-    private let pillInset: CGFloat = 4
+    private let pillInset: CGFloat = 5
 
     @State private var dragStartIndex: Int = 0
     @GestureState private var dragTranslation: CGFloat = 0
@@ -44,6 +44,29 @@ struct InkTabBar: View {
                 .padding(.leading, leading)
             }
             .frame(width: geo.size.width, height: barHeight)
+            .background(
+                RoundedRectangle(cornerRadius: 26, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 26, style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [Color.white.opacity(0.22), Color.white.opacity(0.03)],
+                                    startPoint: .topLeading, endPoint: .bottomTrailing
+                                )
+                            )
+                    )
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 26, style: .continuous)
+                    .strokeBorder(
+                        LinearGradient(colors: [Color.white.opacity(0.5), Color.white.opacity(0.06)],
+                                       startPoint: .top, endPoint: .bottom),
+                        lineWidth: 1
+                    )
+            )
+            .shadow(color: Theme.ink.opacity(0.12), radius: 16, x: 0, y: 8)
             .contentShape(Rectangle())
             .simultaneousGesture(dragGesture(itemWidth: itemWidth))
         }
@@ -71,7 +94,7 @@ struct InkTabBar: View {
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .fill(
                         LinearGradient(
-                            colors: [Color.white.opacity(0.30), Color.white.opacity(0.06)],
+                            colors: [Color.white.opacity(0.42), Color.white.opacity(0.10)],
                             startPoint: .top, endPoint: .bottom
                         )
                     )
