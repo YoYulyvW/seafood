@@ -137,6 +137,7 @@ struct OutItemInput {
     var categoryID: String
     var centijin: Int
     var unitPriceCent: Int
+    var preferredBatchID: String? = nil
 }
 
 struct OutAllocation {

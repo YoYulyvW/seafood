@@ -466,7 +466,12 @@ final class SQLiteStore {
             for item in items {
                 guard item.centijin > 0 else { throw InventoryError.message("出库重量必须大于 0") }
                 guard let cat = category(id: item.categoryID) else { throw InventoryError.message("品类不存在") }
-                let available = batches(categoryID: cat.id)
+                var available = batches(categoryID: cat.id)
+                if let preferred = item.preferredBatchID,
+                   let idx = available.firstIndex(where: { $0.id == preferred }) {
+                    let picked = available.remove(at: idx)
+                    available.insert(picked, at: 0)
+                }
                 let have = available.reduce(0) { $0 + $1.qtyLeftCentijin }
                 if have < item.centijin && !cat.allowNegative {
                     throw InventoryError.stockShort(name: cat.name, need: item.centijin, have: have)
@@ -571,13 +576,14 @@ final class SQLiteStore {
         return String(format: "%@-%@-%02d", prefix, day, count + 1)
     }
 
+    /// 批次号：B-yyMMddHHmm-序号，例如 B-2611231101-01（26 年 11 月 23 日 11:01 第 01 批）
     private func nextBatchNo(date: Date) throws -> String {
         let df = DateFormatter()
-        df.dateFormat = "MMdd"
-        let day = df.string(from: date)
+        df.dateFormat = "yyMMddHHmm"
+        let stamp = df.string(from: date)
         var count = 0
-        rows("SELECT COUNT(*) FROM batch WHERE batch_no LIKE ?", [.text("B-\(day)-%")]) { count = Int(int($0, 0)) }
-        return String(format: "B-%@-%02d", day, count + 1)
+        rows("SELECT COUNT(*) FROM batch WHERE batch_no LIKE ?", [.text("B-" + stamp + "-%")]) { count = Int(int($0, 0)) }
+        return String(format: "B-%@-%02d", stamp, count + 1)
     }
 
     private func insertMovement(_ m: Movement) throws {

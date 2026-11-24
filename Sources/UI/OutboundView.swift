@@ -13,6 +13,8 @@ struct OutboundView: View {
     @State private var categories: [Category] = []
     @State private var stockByID: [String: Int] = [:]
     @State private var batchCountByID: [String: Int] = [:]
+    @State private var batchOptions: [Batch] = []
+    @State private var selectedBatchID: String?
     @State private var selectedID: String? = nil
     @State private var weightText = ""
     @State private var unit: WeightUnit = .jin
@@ -43,6 +45,7 @@ struct OutboundView: View {
         var categoryName: String
         var centijin: Int
         var unitPriceCent: Int
+        var preferredBatchID: String? = nil
 
         var amountCent: Int { centijin * unitPriceCent / 100 }
     }
@@ -119,6 +122,7 @@ struct OutboundView: View {
             }
         }
         .onAppear { loadCategories() }
+        .onChange(of: selectedID) { _ in refreshBatches() }
         .sheet(item: $outSheet) { sheet in
             switch sheet {
             case .result:
@@ -225,20 +229,50 @@ struct OutboundView: View {
                     }
                 }
 
-                LabeledField("售价（元/斤）") {
-                    TextField("0.00", text: $priceText)
-                        .keyboardType(.decimalPad)
-                        .focused($focus, equals: .price)
-                        .inkField()
+                HStack(alignment: .top, spacing: Theme.s3) {
+                    LabeledField("售价（元/斤）") {
+                        TextField("0.00", text: $priceText)
+                            .keyboardType(.decimalPad)
+                            .focused($focus, equals: .price)
+                            .inkField()
+                    }
+
+                    LabeledField("批次（默认最早）") {
+                        Menu {
+                            if batchOptions.isEmpty {
+                                Button("该品类暂无在库批次") {}
+                            } else {
+                                ForEach(batchOptions) { batch in
+                                    Button(batch.batchNo + " · 剩 " + Units.formatJin(batch.qtyLeftCentijin) + " 斤") {
+                                        selectedBatchID = batch.id
+                                        Haptic.tap()
+                                    }
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Text(batchLabel)
+                                    .font(Theme.number(12, weight: .regular))
+                                    .foregroundStyle(Theme.ink)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.7)
+                                Spacer(minLength: 0)
+                                Image(systemName: "chevron.up.chevron.down")
+                                    .font(.caption2)
+                                    .foregroundStyle(Theme.ink3)
+                            }
+                            .inkField()
+                        }
+                    }
                 }
 
                 HStack(alignment: .firstTextBaseline, spacing: Theme.s2) {
                     Text(convertedHint)
-                        .font(.caption)
+                        .font(.caption2)
                         .foregroundStyle(Theme.ink3)
                     Spacer(minLength: Theme.s2)
                     Text("金额 \(amountText)")
-                        .font(Theme.number(13))
+                        .font(Theme.number(12))
                         .foregroundStyle(Theme.ink2)
                 }
 
@@ -249,6 +283,25 @@ struct OutboundView: View {
                 }
                 .buttonStyle(SecondaryButtonStyle())
             }
+        }
+    }
+
+    private var batchLabel: String {
+        guard let id = selectedBatchID, let batch = batchOptions.first(where: { $0.id == id }) else {
+            return batchOptions.isEmpty ? "无批次" : "选择批次"
+        }
+        return batch.batchNo + " · 剩 " + Units.formatJin(batch.qtyLeftCentijin) + " 斤"
+    }
+
+    private func refreshBatches() {
+        guard let id = selectedID else {
+            batchOptions = []
+            selectedBatchID = nil
+            return
+        }
+        batchOptions = SQLiteStore.shared.batches(categoryID: id)
+        if !batchOptions.contains(where: { $0.id == selectedBatchID }) {
+            selectedBatchID = batchOptions.first?.id    // 默认最早入库的那一批
         }
     }
 
@@ -388,6 +441,7 @@ struct OutboundView: View {
         let stock = SQLiteStore.shared.stock()
         stockByID = Dictionary(uniqueKeysWithValues: stock.map { ($0.id, $0.qtyCentijin) })
         batchCountByID = Dictionary(uniqueKeysWithValues: stock.map { ($0.id, $0.batchCount) })
+        refreshBatches()
         if selectedID == nil, let first = categories.first {
             selectedID = first.id
         }
@@ -425,7 +479,8 @@ struct OutboundView: View {
             setError(message)
             return
         }
-        let item = PendingItem(categoryID: id, categoryName: cat.name, centijin: centijin, unitPriceCent: priceCent)
+        let item = PendingItem(categoryID: id, categoryName: cat.name, centijin: centijin,
+                               unitPriceCent: priceCent, preferredBatchID: selectedBatchID)
         withAnimation(.easeOut(duration: 0.18)) {
             items.append(item)
         }
@@ -459,7 +514,8 @@ struct OutboundView: View {
             return
         }
         let inputs = items.map {
-            OutItemInput(categoryID: $0.categoryID, centijin: $0.centijin, unitPriceCent: $0.unitPriceCent)
+            OutItemInput(categoryID: $0.categoryID, centijin: $0.centijin,
+                         unitPriceCent: $0.unitPriceCent, preferredBatchID: $0.preferredBatchID)
         }
         submitting = true
         do {

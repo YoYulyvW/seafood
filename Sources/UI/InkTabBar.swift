@@ -30,7 +30,7 @@ struct InkTabBar: View {
             ZStack(alignment: .leading) {
                 glassPill(width: pillWidth)
                     .offset(x: leading + pillOffset(itemWidth: itemWidth) + pillInset,
-                            y: (barHeight - pillHeight) / 2)
+                            y: 0)
 
                 HStack(spacing: 0) {
                     ForEach(titles.indices, id: \.self) { i in
