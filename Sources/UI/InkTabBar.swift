@@ -65,14 +65,27 @@ struct InkTabBar: View {
 
     // MARK: - 组件
 
+    /// 选中项展开成「图标 + 文字」的胶囊内容，其它项只留图标；
+    /// 切换时文字淡入、图标轻微回弹，和教程里那种悬浮条的节奏一致。
     private func tabItem(_ i: Int) -> some View {
-        VStack(spacing: 2) {
+        let selected = index == i
+        return HStack(spacing: 5) {
             Image(systemName: icons[i])
-                .font(.system(size: 17, weight: .medium))
-            Text(titles[i])
-                .font(.system(size: 10, weight: .medium))
+                .font(.system(size: selected ? 16 : 18, weight: .medium))
+                .scaleEffect(selected ? 1.0 : 0.96)
+            if selected {
+                Text(titles[i])
+                    .font(.system(size: 12, weight: .semibold))
+                    .transition(
+                        .asymmetric(
+                            insertion: .opacity.combined(with: .move(edge: .trailing)).combined(with: .scale(scale: 0.9)),
+                            removal: .opacity.combined(with: .scale(scale: 0.9))
+                        )
+                    )
+            }
         }
-        .foregroundStyle(index == i ? Theme.ink : Theme.ink3)
+        .foregroundStyle(selected ? Theme.ink : Theme.ink3)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .animation(springCurve, value: index)
     }
 
