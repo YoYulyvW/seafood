@@ -10,6 +10,7 @@ struct RootView: View {
     @AppStorage("alert_style") private var alertStyle = "bubble"
     @State private var bubbleExpanded = false
     @State private var showOperatorPrompt = false
+    @State private var mountedTabs: Set<Tab> = [.stock]
     @State private var downloadedIPA: URL?
     @AppStorage("update_skipped_build") private var skippedBuild = 0
 
@@ -80,7 +81,6 @@ struct RootView: View {
             autoSyncIfNeeded()
             promptOperatorIfNeeded()
         }
-        .onChange(of: tab) { _ in bubbleExpanded = false }
         .simultaneousGesture(
             DragGesture(minimumDistance: 24).onChanged { _ in
                 if bubbleExpanded { bubbleExpanded = false }
@@ -109,25 +109,29 @@ struct RootView: View {
         }
     }
 
+    /// 不用系统 TabView：它会在底部留一层容器背景（也就是你看到多出来的那条）。
+    /// 页面首次进入才挂载，之后常驻，切 tab 不丢输入状态。
     private var tabs: some View {
-        TabView(selection: $tab) {
-            StockView()
-                .tabItem { Label("库存", systemImage: "shippingbox") }
-                .tag(Tab.stock)
-            InboundView()
-                .tabItem { Label("入库", systemImage: "tray.and.arrow.down") }
-                .tag(Tab.inbound)
-            OutboundView()
-                .tabItem { Label("出库", systemImage: "tray.and.arrow.up") }
-                .tag(Tab.outbound)
-            FlowView()
-                .tabItem { Label("流水", systemImage: "list.bullet.rectangle") }
-                .tag(Tab.flow)
-            SettingsView()
-                .tabItem { Label("设置", systemImage: "gearshape") }
-                .tag(Tab.settings)
+        ZStack {
+            if mountedTabs.contains(.stock) { page(StockView(), .stock) }
+            if mountedTabs.contains(.inbound) { page(InboundView(), .inbound) }
+            if mountedTabs.contains(.outbound) { page(OutboundView(), .outbound) }
+            if mountedTabs.contains(.flow) { page(FlowView(), .flow) }
+            if mountedTabs.contains(.settings) { page(SettingsView(), .settings) }
         }
         .background(PaperBackground())
+        .onChange(of: tab) { value in
+            mountedTabs.insert(value)
+            bubbleExpanded = false
+        }
+    }
+
+    @ViewBuilder
+    private func page<V: View>(_ content: V, _ tag: Tab) -> some View {
+        content
+            .opacity(tab == tag ? 1 : 0)
+            .allowsHitTesting(tab == tag)
+            .accessibilityHidden(tab != tag)
     }
 
     /// 首次安装或老数据没操作员时，提示补一个（可随机）。
