@@ -49,12 +49,12 @@ struct InkTabBar: View {
             .overlay(
                 RoundedRectangle(cornerRadius: 22, style: .continuous)
                     .strokeBorder(
-                        LinearGradient(colors: [Color.white.opacity(0.45), Color.white.opacity(0.05)],
+                        LinearGradient(colors: [Color.white.opacity(0.22), Color.white.opacity(0.02)],
                                        startPoint: .top, endPoint: .bottom),
                         lineWidth: 1
                     )
             )
-            .shadow(color: Theme.ink.opacity(0.16), radius: 18, x: 0, y: 8)
+            .shadow(color: Theme.ink.opacity(0.10), radius: 12, x: 0, y: 6)
             .simultaneousGesture(dragGesture(itemWidth: itemWidth))
         }
         .frame(height: barHeight)
@@ -78,7 +78,7 @@ struct InkTabBar: View {
             .fill(.ultraThinMaterial)
             .overlay(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(Theme.surface.opacity(index == dragStartIndex ? 0.55 : 0.75))
+                    .fill(Theme.surface.opacity(index == dragStartIndex ? 0.45 : 0.62))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -89,12 +89,15 @@ struct InkTabBar: View {
             .animation(springCurve, value: index)
     }
 
+    /// 整条不做实心背景：只留一层很淡的雾面，让标签栏真正悬浮在页面上。
     private var glassBackground: some View {
-        ZStack {
-            Rectangle().fill(.ultraThinMaterial)
-            LinearGradient(colors: [Color.white.opacity(0.22), Color.white.opacity(0.04)],
-                           startPoint: .topLeading, endPoint: .bottomTrailing)
-        }
+        RoundedRectangle(cornerRadius: 22, style: .continuous)
+            .fill(.ultraThinMaterial)
+            .opacity(0.28)
+            .overlay(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(Color.white.opacity(0.05))
+            )
     }
 
     // MARK: - 位置与拖拽
