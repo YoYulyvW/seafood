@@ -13,8 +13,28 @@ struct RootView: View {
     @State private var downloadedIPA: URL?
     @AppStorage("update_skipped_build") private var skippedBuild = 0
 
-    enum Tab: Hashable {
+    enum Tab: Hashable, CaseIterable {
         case stock, inbound, outbound, flow, settings
+
+        var title: String {
+            switch self {
+            case .stock: return "库存"
+            case .inbound: return "入库"
+            case .outbound: return "出库"
+            case .flow: return "流水"
+            case .settings: return "设置"
+            }
+        }
+
+        var icon: String {
+            switch self {
+            case .stock: return "shippingbox"
+            case .inbound: return "tray.and.arrow.down"
+            case .outbound: return "tray.and.arrow.up"
+            case .flow: return "list.bullet.rectangle"
+            case .settings: return "gearshape"
+            }
+        }
     }
 
     var body: some View {
@@ -29,7 +49,16 @@ struct RootView: View {
                             StockAlertBanner()
                         }
                         tabs
+                            .padding(.bottom, 83)   // 给自绘标签栏留出高度（62 + 21）
                     }
+                    InkTabBar(index: Binding(
+                        get: { Tab.allCases.firstIndex(of: tab) ?? 0 },
+                        set: { tab = Tab.allCases[$0] }
+                    ), titles: Tab.allCases.map { $0.title }, icons: Tab.allCases.map { $0.icon })
+                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 21)
+
                     if alertStyle == "bubble" {
                         StockAlertBubble(expanded: $bubbleExpanded)
                             .padding(.trailing, Theme.s4)
