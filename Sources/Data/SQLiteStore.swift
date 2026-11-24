@@ -972,11 +972,11 @@ final class SQLiteStore {
             let afterText = newCatName + " · " + Units.formatJin(input.newQtyCentijin) + " 斤 · "
                 + (input.supplier.isEmpty ? "—" : input.supplier) + "/" + (input.origin.isEmpty ? "—" : input.origin)
 
-            var operator = input.operatorName.trimmingCharacters(in: .whitespacesAndNewlines)
-            if operator.isEmpty { operator = setting("operator") }
-            if operator.isEmpty { operator = "未署名" }
+            var operatorName = input.operatorName.trimmingCharacters(in: .whitespacesAndNewlines)
+            if operatorName.isEmpty { operatorName = setting("operator") }
+            if operatorName.isEmpty { operatorName = "未署名" }
             try run("INSERT INTO audit_log(id, ts, operator, action, target, detail, updated_at, batch_id, before_text, after_text, reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    [.text(UUID().uuidString), .int(now), .text(operator), .text("批次校正"),
+                    [.text(UUID().uuidString), .int(now), .text(operatorName), .text("批次校正"),
                      .text(batch.batchNo + "（" + newCatName + "）"),
                      .text((changes.isEmpty ? "无字段变化" : changes.joined(separator: "；")) + "；原因：" + reason),
                      .int(now), .text(batch.id), .text(beforeText), .text(afterText), .text(reason)])
