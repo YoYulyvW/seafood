@@ -69,6 +69,7 @@ struct RootView: View {
                 .transition(.opacity)
             }
         }
+        .background(PaperBackground())
         .animation(.easeInOut(duration: 0.26), value: appMode)
         .onAppear {
             autoSyncIfNeeded()
