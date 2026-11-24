@@ -100,6 +100,9 @@ struct StockView: View {
             }
             }
             // 用 safeAreaInset 而不是 overlay：搜索层占位，下面内容整体下移，不会盖住品类卡片
+            .simultaneousGesture(
+                TapGesture().onEnded { collapseSearch() }
+            )
             .safeAreaInset(edge: .top, spacing: 0) {
                 if isSearching {
                     searchOverlay
@@ -132,6 +135,9 @@ struct StockView: View {
                 try? await Task.sleep(nanoseconds: 220_000_000)
             }
             .onAppear { reload() }
+            .onChange(of: searchFocused) { focused in
+                if !focused, isSearching { collapseSearch() }
+            }
             .onChange(of: isActive) { active in
                 guard !active else { return }
                 searchFocused = false
@@ -360,11 +366,7 @@ struct StockView: View {
                     .buttonStyle(.plain)
                 }
                 Button("取消") {
-                    withAnimation(.easeOut(duration: 0.16)) {
-                        search = ""
-                        isSearching = false
-                        searchFocused = false
-                    }
+                    collapseSearch()
                 }
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(Theme.signal)
@@ -501,6 +503,15 @@ struct StockView: View {
     }
 
     // MARK: - 数据
+
+    private func collapseSearch() {
+        guard isSearching else { return }
+        searchFocused = false
+        withAnimation(.easeOut(duration: 0.16)) {
+            isSearching = false
+            search = ""
+        }
+    }
 
     private func reload() {
         StockAlertCenter.shared.refresh(playSound: false)
